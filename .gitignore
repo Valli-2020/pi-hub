@@ -1,0 +1,46 @@
+# secrets — Proxmox token, SSH keys, LAN topology
+config.json
+config.live.json
+secrets.json
+users.json
+sessions.json
+users.json.bak*
+
+# plugin store state (source list + scan cache)
+plugins_sources.json
+
+# update system artifacts
+.pi-hub-staging/
+pi-hub-backups/
+
+# plugins — user-space, never committed
+pi_hub_plugins/*
+
+# test / experiments
+experiments/
+
+# local notes + brand icons (public repo ships no icon set)
+web/icons.json
+secrets.example.json
+_*.md
+docs/
+pi_hub/HEALTH_CHECK_PROPOSAL.md
+
+# python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+*.egg-info/
+
+# env / logs
+.env
+*.log
+
+# IDE / tooling
+.claude/
+.mcp.json
+.repowise/
+.vscode/
+.idea/

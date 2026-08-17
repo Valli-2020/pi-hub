@@ -1,0 +1,57 @@
+{
+  "title": "Pi Hub",
+  "pi_host": "raspberrypi",
+  "hosts": [
+    {
+      "id": "keller",
+      "name": "Keller Server",
+      "os_label": "Debian",
+      "ip": "192.168.1.50",
+      "mac": "AA:BB:CC:DD:EE:FF",
+      "type": "linux",
+      "icon": "server",
+      "capabilities": ["wake", "shutdown", "reboot", "grub_switch", "dualboot"],
+      "dual_boot_peer": "winpc",
+      "grub_entries": {
+        "windows": "Windows 10",
+        "debian": "Debian GNU/Linux"
+      }
+    },
+    {
+      "id": "winpc",
+      "name": "Windows PC",
+      "os_label": "Windows 10",
+      "ip": "192.168.1.51",
+      "mac": "11:22:33:44:55:66",
+      "type": "windows",
+      "icon": "windows",
+      "capabilities": ["wake", "shutdown", "dualboot"],
+      "dual_boot_peer": "keller",
+      "ssh_shutdown_cmd": "powershell -Command \"Stop-Computer -Force\""
+    },
+    {
+      "id": "ollama",
+      "name": "Ollama Box",
+      "os_label": "Ubuntu",
+      "ip": "192.168.1.60",
+      "mac": "AA:BB:CC:DD:EE:01",
+      "type": "linux",
+      "icon": "server",
+      "capabilities": ["wake", "shutdown", "reboot"]
+    }
+  ],
+  "services": [
+    { "name": "Example", "url": "http://raspberrypi:8080", "icon": "docker", "status_port": 8080 },
+    { "name": "Monitoring", "url": "http://raspberrypi:9090", "icon": "docker", "status_port": 9090, "group": "monitoring" }
+  ],
+  "dockge": { "base_url": "http://127.0.0.1:5001" },
+  "proxmox": {
+    "enabled": false,
+    "host": "proxmox",
+    "node": "keller",
+    "_token_note": "Set PROXMOX_TOKEN env var or place token in secrets.json (0600). Format: PVEAPIToken=root@pam!<name>=<uuid>"
+  },
+  "groups": {
+    "monitoring": { "label": "Monitoring Stack" }
+  }
+}

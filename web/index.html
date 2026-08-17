@@ -1,0 +1,2452 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzMiAzMiI+CiAgPGNpcmNsZSBjeD0iMTYiIGN5PSIxNSIgcj0iNSIgZmlsbD0ib2tsY2goNjUlIDAuMTMgNjApIi8+CiAgPGxpbmUgeDE9IjE2IiB5MT0iMTAiIHgyPSIxNiIgeTI9IjMiIHN0cm9rZT0ib2tsY2goNjUlIDAuMTMgNjApIiBzdHJva2Utd2lkdGg9IjEuNSIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIi8+CiAgPGxpbmUgeDE9IjIxIiB5MT0iMTkiIHgyPSIyNyIgeTI9IjI0IiBzdHJva2U9Im9rbGNoKDY1JSAwLjEzIDYwKSIgc3Ryb2tlLXdpZHRoPSIxLjUiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIvPgogIDxsaW5lIHgxPSIxMSIgeTE9IjE5IiB4Mj0iNSIgIHkyPSIyNCIgc3Ryb2tlPSJva2xjaCg2NSUgMC4xMyA2MCkiIHN0cm9rZS13aWR0aD0iMS41IiBzdHJva2UtbGluZWNhcD0icm91bmQiLz4KICA8Y2lyY2xlIGN4PSIxNiIgY3k9IjMiIHI9IjIuMiIgZmlsbD0ibm9uZSIgc3Ryb2tlPSJva2xjaCg2NSUgMC4xMyA2MCkiIHN0cm9rZS13aWR0aD0iMS41Ii8+CiAgPGNpcmNsZSBjeD0iMjciIGN5PSIyNCIgcj0iMi4yIiBmaWxsPSJub25lIiBzdHJva2U9Im9rbGNoKDY1JSAwLjEzIDYwKSIgc3Ryb2tlLXdpZHRoPSIxLjUiLz4KICA8Y2lyY2xlIGN4PSI1IiAgY3k9IjI0IiByPSIyLjIiIGZpbGw9Im5vbmUiIHN0cm9rZT0ib2tsY2goNjUlIDAuMTMgNjApIiBzdHJva2Utd2lkdGg9IjEuNSIvPgo8L3N2Zz4=">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark light">
+<title>Pi Hub</title>
+<script>
+  (function(){
+    var t = 'auto';
+    try { t = localStorage.getItem('pihub-theme') || 'auto'; } catch(e) {}
+    var dark = t === 'dark' || (t === 'auto' && !window.matchMedia('(prefers-color-scheme: light)').matches);
+    document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+    document.documentElement.dataset.themePref = t;
+  })();
+</script>
+<style>
+  /* ── Tokens ────────────────────────────────────────────────────────────
+     One warm amber accent. Status colours (ok/warn/bad) are the only other
+     hues and they are never used decoratively — colour always means state. */
+  :root {
+    --bg:            oklch(18% 0.012 265);
+    --surface:       oklch(23% 0.014 265);
+    --surface-2:     oklch(27% 0.016 265);
+    --border:        oklch(33% 0.016 265);
+    --border-strong: oklch(45% 0.02 265);
+    --text:          oklch(95% 0.005 265);
+    --muted:         oklch(70% 0.014 265);
+    --faint:         oklch(52% 0.014 265);
+    --accent:        oklch(75% 0.14 68);
+    --accent-hover:  oklch(81% 0.14 68);
+    --accent-ink:    oklch(20% 0.04 68);
+    --ok:            oklch(73% 0.15 152);
+    --warn:          oklch(79% 0.14 82);
+    --bad:           oklch(67% 0.17 25);
+    --ok-ink:        oklch(17% 0.03 152);
+    --bad-ink:       oklch(98% 0.01 25);
+    --shadow:        0 1px 2px rgb(0 0 0 / .25), 0 8px 24px rgb(0 0 0 / .18);
+    --radius:        14px;
+    --radius-sm:     9px;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --mono: ui-monospace, "SF Mono", "JetBrains Mono", "Cascadia Code", Menlo, Consolas, monospace;
+  }
+  :root[data-theme="light"] {
+    --bg:            oklch(97% 0.004 265);
+    --surface:       oklch(100% 0 0);
+    --surface-2:     oklch(96% 0.006 265);
+    --border:        oklch(89% 0.008 265);
+    --border-strong: oklch(78% 0.012 265);
+    --text:          oklch(25% 0.02 265);
+    --muted:         oklch(50% 0.015 265);
+    --faint:         oklch(62% 0.015 265);
+    --accent:        oklch(56% 0.14 60);
+    --accent-hover:  oklch(50% 0.15 58);
+    --accent-ink:    oklch(100% 0 0);
+    --ok:            oklch(52% 0.14 152);
+    --warn:          oklch(60% 0.14 82);
+    --bad:           oklch(54% 0.18 25);
+    --ok-ink:        oklch(100% 0 0);
+    --bad-ink:       oklch(100% 0 0);
+    --shadow:        0 1px 2px rgb(0 0 0 / .05), 0 6px 20px rgb(0 0 0 / .06);
+  }
+
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body { margin:0; background:var(--bg); color:var(--text); font-family:var(--sans);
+         font-size:15px; line-height:1.5; -webkit-font-smoothing:antialiased; }
+  :focus-visible { outline:2px solid var(--accent); outline-offset:2px; border-radius:4px; }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration:.01ms !important; transition-duration:.01ms !important; }
+    html { scroll-behavior:auto; }
+  }
+
+  /* ── Header ─────────────────────────────────────────────────────────── */
+  header { position:sticky; top:0; z-index:30; display:flex; align-items:center; gap:16px;
+           height:56px; padding:0 16px; background:color-mix(in oklab, var(--bg) 88%, transparent);
+           backdrop-filter:blur(10px); border-bottom:1px solid var(--border); }
+  .brand { display:flex; align-items:center; gap:10px; flex:none; }
+  .brand svg { width:26px; height:26px; color:var(--accent); display:block; }
+  h1 { margin:0; font-size:16px; font-weight:650; letter-spacing:-.01em; white-space:nowrap; }
+
+  /* Health strip — the "glanceable" bit: totals before you read anything */
+  .health { display:flex; align-items:center; gap:6px; flex:none; }
+  .health .hpill { display:inline-flex; align-items:center; gap:6px; height:26px; padding:0 9px;
+                   border-radius:99px; font-size:12px; font-variant-numeric:tabular-nums;
+                   border:1px solid var(--border); color:var(--muted); background:var(--surface); }
+  .health .hpill b { font-weight:600; color:var(--text); }
+  .health .hpill.bad  { border-color:color-mix(in oklab, var(--bad) 45%, var(--border)); color:var(--bad); }
+  .health .hpill.bad b { color:var(--bad); }
+
+  .search { position:relative; flex:1; max-width:380px; margin-left:auto; }
+  .search svg { position:absolute; left:10px; top:50%; transform:translateY(-50%);
+                width:15px; height:15px; color:var(--faint); pointer-events:none; }
+  .search input { width:100%; height:34px; padding:0 34px 0 32px; font:inherit; font-size:13.5px;
+                  color:var(--text); background:var(--surface); border:1px solid var(--border);
+                  border-radius:99px; transition:border-color .15s, background .15s; }
+  .search input::placeholder { color:var(--faint); }
+  .search input:hover { border-color:var(--border-strong); }
+  .search input:focus { outline:none; border-color:var(--accent); background:var(--bg); }
+  .search kbd { position:absolute; right:9px; top:50%; transform:translateY(-50%); font-family:var(--mono);
+                font-size:11px; color:var(--faint); border:1px solid var(--border); border-radius:5px;
+                padding:1px 5px; pointer-events:none; }
+  .search input:not(:placeholder-shown) ~ kbd { display:none; }
+
+  .hactions { display:flex; align-items:center; gap:6px; flex:none; }
+  .iconbtn { width:34px; height:34px; display:grid; place-items:center; border-radius:var(--radius-sm);
+             background:transparent; border:1px solid var(--border); color:var(--muted); cursor:pointer;
+             transition:color .15s, border-color .15s, background .15s; }
+  .iconbtn:hover { color:var(--text); border-color:var(--border-strong); background:var(--surface); }
+  .iconbtn svg { width:16px; height:16px; display:block; }
+  .iconbtn.spin svg { animation:spin .8s linear infinite; }
+  @keyframes spin { to { transform:rotate(360deg); } }
+  .stamp { font-size:11.5px; color:var(--faint); font-variant-numeric:tabular-nums; white-space:nowrap; }
+
+  /* ── Sidebar ────────────────────────────────────────────────────────── */
+  .shell { display:grid; grid-template-columns:212px minmax(0,1fr); align-items:start; }
+  .sidebar { position:sticky; top:56px; height:calc(100dvh - 56px); padding:14px 10px;
+             display:flex; flex-direction:column; gap:2px; border-right:1px solid var(--border);
+             overflow-y:auto; }
+  .nav-item { display:flex; align-items:center; gap:10px; width:100%; padding:8px 10px;
+              font:inherit; font-size:13.5px; color:var(--muted); background:transparent; border:0;
+              border-radius:var(--radius-sm); cursor:pointer; text-align:left;
+              transition:background .12s, color .12s; }
+  .nav-item svg { width:16px; height:16px; flex:none; opacity:.85; }
+  .nav-item .count { margin-left:auto; font-size:11.5px; font-variant-numeric:tabular-nums;
+                     color:var(--faint); background:var(--surface-2); border-radius:99px; padding:1px 7px; }
+  .nav-item:hover { background:var(--surface); color:var(--text); }
+  .nav-item[aria-current="page"] { background:var(--surface); color:var(--text); font-weight:550; }
+  .nav-item[aria-current="page"] svg { color:var(--accent); opacity:1; }
+  .navhint { margin-top:auto; padding:10px; font-size:11.5px; color:var(--faint); line-height:1.6; }
+  .navhint kbd { font-family:var(--mono); font-size:10.5px; border:1px solid var(--border);
+                 border-radius:4px; padding:0 4px; }
+
+  main { padding:22px 24px 64px; min-width:0; }
+  .viewhead { display:flex; align-items:baseline; gap:10px; margin:0 0 14px; }
+  .viewhead h2 { margin:0; font-size:19px; font-weight:600; letter-spacing:-.015em; }
+  .viewhead .sub { font-size:13px; color:var(--faint); font-variant-numeric:tabular-nums; }
+  h3.group { font-size:11.5px; font-weight:600; color:var(--faint); margin:22px 0 10px;
+             text-transform:uppercase; letter-spacing:.07em; }
+  h3.group:first-child { margin-top:0; }
+
+  .grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(258px,1fr)); gap:12px; }
+
+  /* ── Card ───────────────────────────────────────────────────────────── */
+  .card { position:relative; display:flex; flex-direction:column; gap:12px; overflow:hidden;
+          padding:14px 16px 14px 17px; background:var(--surface);
+          border:1px solid var(--border); border-radius:var(--radius);
+          transition:border-color .15s, box-shadow .15s, transform .15s; }
+  .card:hover { border-color:var(--border-strong); box-shadow:var(--shadow); }
+  /* status rail — colour on the edge, so state is readable without hunting for a dot */
+  .card::before { content:""; position:absolute; left:0; top:0; bottom:0; width:3px;
+                  background:var(--faint); transition:background .3s; }
+  .card[data-state="online"]::before  { background:var(--ok); }
+  .card[data-state="running"]::before { background:var(--ok); }
+  .card[data-state="offline"]::before { background:var(--bad); }
+  .card[data-state="stopped"]::before { background:var(--bad); }
+  .card[data-state="degraded"]::before,
+  .card[data-state="pending"]::before { background:var(--warn); }
+
+  .card .top { display:flex; align-items:center; gap:10px; }
+  .card h4 { margin:0; font-size:14.5px; font-weight:600; letter-spacing:-.01em;
+             overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .icon { width:32px; height:32px; flex:none; border-radius:9px; display:grid; place-items:center;
+          background:var(--surface-2); border:1px solid var(--border); color:var(--accent); }
+  .icon svg { width:18px; height:18px; display:block; }
+  .meta { font-size:12px; color:var(--muted); font-family:var(--mono); word-break:break-all;
+          margin-top:-4px; }
+
+  /* status chip: dot + word. Colour alone never carries the meaning. */
+  .chip { margin-left:auto; flex:none; display:inline-flex; align-items:center; gap:5px;
+          height:22px; padding:0 8px; border-radius:99px; font-size:11px; font-weight:550;
+          letter-spacing:.02em; border:1px solid var(--border); color:var(--muted);
+          background:var(--surface-2); }
+  .chip .dot { width:6px; height:6px; border-radius:50%; background:currentColor; flex:none; }
+  .chip[data-state="online"], .chip[data-state="running"]
+        { color:var(--ok);   border-color:color-mix(in oklab, var(--ok) 40%, transparent);
+          background:color-mix(in oklab, var(--ok) 12%, transparent); }
+  .chip[data-state="offline"], .chip[data-state="stopped"]
+        { color:var(--bad);  border-color:color-mix(in oklab, var(--bad) 40%, transparent);
+          background:color-mix(in oklab, var(--bad) 12%, transparent); }
+  .chip[data-state="degraded"], .chip[data-state="pending"]
+        { color:var(--warn); border-color:color-mix(in oklab, var(--warn) 40%, transparent);
+          background:color-mix(in oklab, var(--warn) 12%, transparent); }
+  .chip[data-state="pending"] .dot { animation:pulse 1.4s ease-in-out infinite; }
+  @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:.25; } }
+
+  /* ── Buttons ────────────────────────────────────────────────────────── */
+  .btn { display:inline-flex; align-items:center; justify-content:center; gap:6px;
+         height:32px; padding:0 12px; font:inherit; font-size:13px; font-weight:550;
+         border-radius:var(--radius-sm); border:1px solid transparent; cursor:pointer;
+         text-decoration:none; white-space:nowrap;
+         transition:background .15s, border-color .15s, color .15s, transform .06s; }
+  .btn:active:not(:disabled) { transform:translateY(1px); }
+  .btn svg { width:14px; height:14px; flex:none; }
+  .btn:disabled, .btn[aria-disabled="true"] { opacity:.42; cursor:not-allowed; pointer-events:none; }
+  .btn-primary { background:var(--accent); color:var(--accent-ink); }
+  .btn-primary:hover:not(:disabled) { background:var(--accent-hover); }
+  .btn-quiet { background:var(--surface-2); color:var(--text); border-color:var(--border); }
+  .btn-quiet:hover:not(:disabled) { border-color:var(--border-strong); background:var(--surface); }
+  .btn-ok { background:transparent; color:var(--ok);
+            border-color:color-mix(in oklab, var(--ok) 45%, transparent); }
+  .btn-ok:hover:not(:disabled) { background:color-mix(in oklab, var(--ok) 14%, transparent); }
+  .btn-bad { background:transparent; color:var(--bad);
+             border-color:color-mix(in oklab, var(--bad) 45%, transparent); }
+  .btn-bad:hover:not(:disabled) { background:color-mix(in oklab, var(--bad) 14%, transparent); }
+  .btn-row { display:flex; gap:7px; flex-wrap:wrap; margin-top:auto; }
+  .btn-block { width:100%; }
+  .btn-sm { height:27px; padding:0 10px; font-size:12px; }
+
+  /* ── Task progress ──────────────────────────────────────────────────── */
+  .task { display:none; align-items:center; gap:8px; padding:8px 10px; font-size:12px;
+          color:var(--accent); background:color-mix(in oklab, var(--accent) 10%, transparent);
+          border:1px solid color-mix(in oklab, var(--accent) 30%, transparent);
+          border-radius:var(--radius-sm); }
+  .task[data-on] { display:flex; }
+  .task .spinner { width:12px; height:12px; flex:none; border-radius:50%;
+                   border:2px solid color-mix(in oklab, var(--accent) 30%, transparent);
+                   border-top-color:var(--accent); animation:spin .7s linear infinite; }
+
+  /* ── Stacks list ────────────────────────────────────────────────────── */
+  .rows { display:flex; flex-direction:column; border:1px solid var(--border);
+          border-radius:var(--radius); overflow:hidden; background:var(--surface); }
+  .row { display:flex; align-items:center; gap:12px; padding:11px 14px;
+         border-bottom:1px solid var(--border); }
+  .row:last-child { border-bottom:none; }
+  .row:hover { background:var(--surface-2); }
+  .row .name { font-size:14px; font-weight:500; }
+  .row .chip { margin-left:auto; }
+
+  /* ── Table ──────────────────────────────────────────────────────────── */
+  .tablewrap { border:1px solid var(--border); border-radius:var(--radius); overflow:hidden;
+               background:var(--surface); }
+  .tscroll { overflow-x:auto; }
+  table { width:100%; border-collapse:collapse; font-size:13.5px; table-layout:fixed; }
+  th:nth-child(1), td:nth-child(1) { width:60px; }   /* VMID */
+  th:nth-child(4), td:nth-child(4) { width:90px; }   /* CPU */
+  th:nth-child(5), td:nth-child(5) { width:110px; }  /* Memory */
+  th:nth-child(6), td:nth-child(6) { width:80px; }   /* Actions */
+  th { background:var(--surface-2); color:var(--muted);
+       text-align:left; padding:9px 14px; font-weight:600; font-size:11.5px;
+       text-transform:uppercase; letter-spacing:.06em; border-bottom:1px solid var(--border);
+       white-space:nowrap; }
+  th[data-sort] { cursor:pointer; user-select:none; }
+  th[data-sort]:hover { color:var(--text); }
+  th[data-sort]::after { content:""; display:inline-block; width:0; height:0; margin-left:6px;
+                         vertical-align:middle; opacity:0;
+                         border-left:4px solid transparent; border-right:4px solid transparent; }
+  th[aria-sort="ascending"]::after  { opacity:.8; border-bottom:5px solid currentColor; }
+  th[aria-sort="descending"]::after { opacity:.8; border-top:5px solid currentColor; }
+  td { padding:10px 14px; border-bottom:1px solid var(--border); vertical-align:middle; }
+  tbody tr:last-child td { border-bottom:none; }
+  tbody tr:hover { background:var(--surface-2); }
+  td.num { font-family:var(--mono); font-variant-numeric:tabular-nums; }
+  td.actions { text-align:right; }
+  td.actions .btn-row { margin:0; justify-content:flex-end; }
+
+  /* usage bar — number first, bar as secondary reinforcement */
+  .usage { display:flex; align-items:center; gap:8px; min-width:104px; }
+  .usage .val { font-family:var(--mono); font-variant-numeric:tabular-nums; font-size:12.5px;
+                min-width:46px; }
+  .bar { flex:1; height:4px; border-radius:2px; background:var(--surface-2); overflow:hidden; }
+  .bar i { display:block; height:100%; border-radius:2px; background:var(--accent);
+           transition:width .4s ease; }
+  .bar i[data-hot] { background:var(--bad); }
+
+  /* ── States ─────────────────────────────────────────────────────────── */
+  .skel { border-radius:var(--radius); background:var(--surface); border:1px solid var(--border);
+          height:132px; position:relative; overflow:hidden; }
+  .skel::after { content:""; position:absolute; inset:0;
+                 background:linear-gradient(90deg, transparent, color-mix(in oklab, var(--text) 6%, transparent), transparent);
+                 transform:translateX(-100%); animation:sweep 1.4s ease-in-out infinite; }
+  @keyframes sweep { to { transform:translateX(100%); } }
+  .empty { padding:34px 20px; text-align:center; color:var(--muted); }
+  .empty strong { display:block; color:var(--text); font-weight:550; margin-bottom:4px; font-size:14.5px; }
+  .empty p { margin:0 0 14px; font-size:13.5px; }
+  .nomatch { display:none; padding:28px 4px; color:var(--muted); font-size:13.5px; }
+
+  /* ── Toasts ─────────────────────────────────────────────────────────── */
+  #toasts { position:fixed; bottom:18px; right:18px; z-index:9999;
+            display:flex; flex-direction:column; gap:8px; max-width:340px; }
+  .toast { display:flex; align-items:flex-start; gap:9px; padding:10px 13px; font-size:13px;
+           background:var(--surface); border:1px solid var(--border); border-left:3px solid var(--faint);
+           border-radius:var(--radius-sm); box-shadow:var(--shadow); animation:slide .22s ease-out; }
+  .toast[data-kind="ok"]  { border-left-color:var(--ok); }
+  .toast[data-kind="err"] { border-left-color:var(--bad); }
+  .toast svg { width:15px; height:15px; flex:none; margin-top:1px; }
+  .toast[data-kind="ok"] svg  { color:var(--ok); }
+  .toast[data-kind="err"] svg { color:var(--bad); }
+  @keyframes slide { from { opacity:0; transform:translateX(14px); } }
+
+  dialog { padding:0; border:1px solid var(--border); border-radius:var(--radius);
+           background:var(--surface); color:var(--text); max-width:420px; width:calc(100% - 32px);
+           box-shadow:var(--shadow); }
+  dialog::backdrop { background:rgb(0 0 0 / .5); backdrop-filter:blur(2px); }
+  .dlg { padding:20px; }
+  .dlg h3 { margin:0 0 8px; font-size:16px; font-weight:600; }
+  .dlg p { margin:0 0 18px; font-size:13.5px; color:var(--muted); line-height:1.55; }
+  .dlg .btn-row { justify-content:flex-end; margin:0; }
+
+  .sr { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); }
+
+  /* ── Login screen (v6) ─────────────────────────────────────────────── */
+  #login { position:fixed; inset:0; z-index:9990; display:grid; place-items:center;
+           background:var(--bg); }
+  #login[hidden] { display:none; }
+  .login-card { width:min(340px, calc(100vw - 40px)); padding:30px 28px;
+                background:var(--surface); border:1px solid var(--border);
+                border-radius:var(--radius); box-shadow:var(--shadow);
+                display:flex; flex-direction:column; gap:10px; }
+  .login-card .brand { justify-content:center; }
+  .login-card h1 { text-align:center; font-size:19px; }
+  .login-sub { margin:0 0 6px; text-align:center; font-size:13px; color:var(--muted); }
+  .login-card input { width:100%; height:38px; padding:0 12px; font:inherit; font-size:14px;
+                      color:var(--text); background:var(--bg);
+                      border:1px solid var(--border); border-radius:var(--radius-sm); }
+  .login-card input:focus { outline:none; border-color:var(--accent); }
+  .login-err { margin:0; font-size:12.5px; color:var(--bad); text-align:center; }
+  .userbadge { font-size:12px; color:var(--muted); font-variant-numeric:tabular-nums;
+               white-space:nowrap; max-width:140px; overflow:hidden;
+               text-overflow:ellipsis; }
+  .userbadge b { color:var(--accent); font-weight:600; }
+
+  /* ── Users view (v6) ───────────────────────────────────────────────── */
+  .adduser { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+  .adduser input, .adduser select { height:32px; padding:0 10px; font:inherit; font-size:13px;
+                                    color:var(--text); background:var(--surface);
+                                    border:1px solid var(--border); border-radius:var(--radius-sm); }
+  .adduser input:focus, .adduser select:focus { outline:none; border-color:var(--accent); }
+  .adduser input[type="password"] { min-width:160px; }
+  .adduser input[name="username"] { min-width:150px; }
+
+  /* viewer: no blanket button-hide — buttons are filtered per-user caps in JS */
+
+  /* ── Caps matrix editor (v6.1) ───────────────────────────────────────── */
+  .capsdlg { max-width: 720px; width: calc(100vw - 48px); }
+  .capsdlg .dlg { padding: 20px 22px; }
+  .capswrap { overflow:auto; max-height: 55vh; border:1px solid var(--border); border-radius:10px; }
+  .capsdlg table { border-collapse: collapse; width:100%; font-size:13px; }
+  .capsdlg th, .capsdlg td { padding:7px 10px; border-bottom:1px solid var(--border); text-align:left; white-space:nowrap; }
+  .capsdlg th { position:sticky; top:0; background:var(--surface); font-weight:600; }
+  .capsdlg th.targets { font-weight:500; color:var(--muted); }
+  .capsdlg td.lbl { font-weight:500; }
+  .capsdlg input[type="checkbox"] { width:15px; height:15px; accent-color:var(--accent); }
+  .capsdlg .hint { font-size:12px; color:var(--muted); margin:10px 2px 0; }
+
+  /* ── Add host/service dialog (v6.2) ──────────────────────────────────── */
+  .caps-chips { display:flex; gap:6px; flex-wrap:wrap; align-items:center; width:100%; }
+  .chipbox { display:inline-flex; gap:4px; align-items:center; font-size:12.5px;
+             color:var(--muted); padding:4px 8px; border:1px solid var(--border);
+             border-radius:999px; cursor:pointer; }
+  .chipbox input { width:auto; accent-color:var(--accent); }
+
+  /* ── Responsive ─────────────────────────────────────────────────────── */
+  @media (max-width:860px) {
+    header { gap:10px; padding:0 12px; flex-wrap:wrap; height:auto; padding-block:10px; }
+    .health { order:3; width:100%; }
+    .search { max-width:none; order:2; }
+    .shell { grid-template-columns:1fr; }
+    .sidebar { position:sticky; top:0; height:auto; flex-direction:row; padding:8px 10px;
+               border-right:none; border-bottom:1px solid var(--border); overflow-x:auto;
+               background:var(--bg); z-index:20; }
+    .nav-item { white-space:nowrap; width:auto; }
+    .navhint { display:none; }
+    main { padding:16px 14px 56px; }
+    th { top:0; }
+    #toasts { left:14px; right:14px; bottom:14px; max-width:none; }
+  }
+
+  /* ── v7: filter bars, chips, settings, scan results ─────────────────── */
+  .filterbar { display:flex; flex-wrap:wrap; align-items:center; gap:6px 10px;
+               margin:0 0 14px; }
+  .fgroup { display:inline-flex; flex-wrap:wrap; gap:6px; align-items:center; }
+  .fchip { border:1px solid var(--border); background:var(--surface); color:var(--text);
+           border-radius:10px; padding:3px 10px; font-size:12px; cursor:pointer;
+           transition:background .15s, border-color .15s; }
+  .fchip.on { background:var(--accent); border-color:var(--accent); color:var(--accent-ink);
+              font-weight:600; }
+  .fsort { background:var(--surface); color:var(--text); border:1px solid var(--border);
+           border-radius:10px; padding:3px 8px; font-size:12px; }
+  .setgrid { display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr));
+             gap:16px; align-items:start; }
+  .setcard { background:var(--card); border:1px solid var(--border); border-radius:14px;
+             padding:16px 18px; }
+  .setcard .group { margin-top:0; }
+  .flabel { display:block; font-size:12px; color:var(--muted); margin:12px 0 4px; }
+  .finput, .instrow input, .instrow select { width:100%; box-sizing:border-box;
+             background:var(--raised); border:1px solid var(--border); color:var(--text);
+             border-radius:10px; padding:8px 10px; font-size:14px; }
+  .instrow { display:grid; grid-template-columns:90px 1fr 1fr 1fr auto; gap:6px;
+             margin-bottom:8px; align-items:center; }
+  .instrow .del { background:none; border:none; color:var(--bad); cursor:pointer;
+                  font-size:16px; line-height:1; }
+  .tagpill { display:inline-block; background:var(--raised); border:1px solid var(--border);
+             color:var(--muted); border-radius:8px; padding:0 7px; font-size:11px;
+             margin-left:6px; vertical-align:middle; }
+  .scanrow { display:flex; flex-wrap:wrap; gap:8px; align-items:center; padding:8px 10px;
+             border:1px solid var(--border); border-radius:12px; margin-bottom:8px;
+             background:var(--card); }
+  .scanrow .srcc { font-size:11px; color:var(--muted); border:1px solid var(--border);
+                   border-radius:8px; padding:1px 6px; }
+  .scanrow input[type=text] { background:var(--raised); border:1px solid var(--border);
+             color:var(--text); border-radius:8px; padding:5px 8px; font-size:13px; min-width:140px; }
+  .scanwrap { border:1px solid var(--border); border-radius:14px; padding:12px; margin-bottom:16px;
+              background:var(--card); }
+  .scanwrap .hint { margin:0 0 10px; }
+  .banner { display:flex; gap:10px; align-items:center; border:1px solid var(--border);
+            border-radius:12px; padding:10px 12px; margin-bottom:14px; background:var(--card); }
+  .banner b { margin-right:auto; }
+  .insthead { font-size:12px; color:var(--muted); text-transform:uppercase; letter-spacing:.04em;
+              margin:14px 0 6px; }
+  .insthead:first-child { margin-top:0; }
+
+  /* ── v7.1: update card ─────────────────────────────────────────── */
+  .upd-meta { font-size:12.5px; color:var(--muted); margin:2px 0 10px; }
+  .upd-meta code { font-family:var(--mono); font-size:11.5px; color:var(--text);
+                   background:var(--raised); padding:1px 5px; border-radius:6px; }
+  .upd-banner { border:1px solid color-mix(in oklab, var(--bad) 45%, var(--border));
+                border-radius:12px; padding:12px 14px; margin-bottom:12px;
+                background:color-mix(in oklab, var(--bad) 7%, var(--card)); }
+  .upd-banner h3 { margin:0 0 2px; color:var(--bad); font-size:14px; font-weight:600; }
+  .upd-banner .upd-rel { font-size:11.5px; color:var(--muted); margin:0; }
+  .upd-changelog { font-size:12.5px; color:var(--text); white-space:pre-wrap;
+                   max-height:220px; overflow:auto; margin:8px 0 12px;
+                   background:var(--surface); border:1px solid var(--border);
+                   border-radius:10px; padding:8px 10px; }
+  .upd-changelog b { color:var(--bad); font-weight:600; }
+  .btn-bad-solid { background:var(--bad); color:var(--bad-ink); border:1px solid var(--bad); }
+  .btn-bad-solid:hover:not(:disabled) { filter:brightness(1.12); }
+</style>
+</head>
+<body>
+
+<div id="login" hidden>
+  <div class="login-card">
+    <span class="brand">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" aria-hidden="true">
+        <circle cx="16" cy="15" r="5" fill="currentColor"/>
+        <line x1="16" y1="10" x2="16" y2="3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+        <line x1="21" y1="19" x2="27" y2="24" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+        <line x1="11" y1="19" x2="5" y2="24" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+      </svg>
+      <h1>Pi Hub</h1>
+    </span>
+    <p class="login-sub">Sign in to continue</p>
+    <form id="login-form" autocomplete="on">
+      <input id="login-user" name="username" autocomplete="username" placeholder="Username" required>
+      <input id="login-pass" name="password" type="password" autocomplete="current-password" placeholder="Password" required>
+      <button class="btn btn-primary btn-block" type="submit">Sign in</button>
+      <p class="login-err" id="login-err" hidden></p>
+    </form>
+  </div>
+</div>
+
+<div class="login" id="setup" hidden>
+  <div class="logincard">
+    <span class="brand">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" aria-hidden="true">
+        <circle cx="16" cy="15" r="5" fill="currentColor"/>
+        <line x1="16" y1="10" x2="16" y2="3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+        <line x1="21" y1="19" x2="27" y2="24" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+        <line x1="11" y1="19" x2="5" y2="24" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+        <circle cx="16" cy="3" r="2.2" fill="none" stroke="currentColor" stroke-width="1.5"/>
+        <circle cx="27" cy="24" r="2.2" fill="none" stroke="currentColor" stroke-width="1.5"/>
+        <circle cx="5" cy="24" r="2.2" fill="none" stroke="currentColor" stroke-width="1.5"/>
+      </svg>
+      <h1>Pi Hub</h1>
+    </span>
+    <p class="login-sub">Welcome — create the first admin account</p>
+    <form id="setup-form" autocomplete="on">
+      <input id="setup-user" name="username" autocomplete="username" placeholder="Username" pattern="[A-Za-z0-9._-]{1,32}" required>
+      <input id="setup-pass" name="password" type="password" autocomplete="new-password" placeholder="Password (min 8)" minlength="8" required>
+      <button class="btn btn-primary btn-block" type="submit">Create admin account</button>
+      <p class="login-err" id="setup-err" hidden></p>
+    </form>
+  </div>
+</div>
+
+<header>
+  <span class="brand">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" aria-hidden="true">
+      <circle cx="16" cy="15" r="5" fill="currentColor"/>
+      <line x1="16" y1="10" x2="16" y2="3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+      <line x1="21" y1="19" x2="27" y2="24" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+      <line x1="11" y1="19" x2="5" y2="24" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+      <circle cx="16" cy="3" r="2.2" fill="none" stroke="currentColor" stroke-width="1.5"/>
+      <circle cx="27" cy="24" r="2.2" fill="none" stroke="currentColor" stroke-width="1.5"/>
+      <circle cx="5" cy="24" r="2.2" fill="none" stroke="currentColor" stroke-width="1.5"/>
+    </svg>
+    <h1>Pi Hub</h1>
+  </span>
+
+  <div class="health" id="health" role="status" aria-live="polite" aria-label="Infrastructure health">
+    <span class="hpill"><b id="h-up">—</b> up</span>
+    <span class="hpill" id="h-down-pill" hidden><b id="h-down">0</b> down</span>
+  </div>
+
+  <div class="search">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+      <circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5" stroke-linecap="round"/>
+    </svg>
+    <input id="q" type="search" placeholder="Filter hosts and services" aria-label="Filter" autocomplete="off">
+    <kbd>/</kbd>
+  </div>
+
+  <div class="hactions">
+    <span class="userbadge" id="userbadge" title="Signed in as"></span>
+    <button class="iconbtn" id="add" title="Add host or service" aria-label="Add host or service" hidden>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+        <path d="M12 5v14M5 12h14"/>
+      </svg>
+    </button>
+    <button class="iconbtn" id="logout" title="Sign out" aria-label="Sign out" hidden>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/>
+      </svg>
+    </button>
+    <span class="stamp" id="stamp" title="Time of last successful poll"></span>
+    <button class="iconbtn" id="refresh" title="Refresh now (r)" aria-label="Refresh now">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+        <path d="M20 11a8 8 0 1 0-2.3 6M20 5v6h-6"/>
+      </svg>
+    </button>
+    <button class="iconbtn" id="theme" title="Switch theme" aria-label="Switch theme">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+        <path d="M21 13a8.5 8.5 0 1 1-10-10 7 7 0 0 0 10 10Z"/>
+      </svg>
+    </button>
+  </div>
+</header>
+
+<div class="shell">
+  <nav class="sidebar" id="sidebar" aria-label="Sections">
+    <button class="nav-item" data-go="hosts" aria-current="page">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+        <rect x="3" y="4" width="18" height="7" rx="2"/><rect x="3" y="13" width="18" height="7" rx="2"/>
+        <path d="M7 7.5h.01M7 16.5h.01"/>
+      </svg>
+      Hosts <span class="count" id="c-hosts"></span>
+    </button>
+    <button class="nav-item" data-go="services">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+        <rect x="3" y="3" width="7" height="7" rx="2"/><rect x="14" y="3" width="7" height="7" rx="2"/>
+        <rect x="3" y="14" width="7" height="7" rx="2"/><rect x="14" y="14" width="7" height="7" rx="2"/>
+      </svg>
+      Services <span class="count" id="c-services"></span>
+    </button>
+    <button class="nav-item" data-go="containers">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round">
+        <path d="M12 3 21 8v8l-9 5-9-5V8Z"/><path d="M12 12 21 8M12 12v9M12 12 3 8"/>
+      </svg>
+      Containers <span class="count" id="c-containers"></span>
+    </button>
+    <button class="nav-item" data-go="stacks">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round">
+        <path d="m12 3 9 4.5-9 4.5-9-4.5Z"/><path d="m3 12 9 4.5 9-4.5"/><path d="m3 16.5 9 4.5 9-4.5"/>
+      </svg>
+      Dockge <span class="count" id="c-stacks"></span>
+    </button>
+    <button class="nav-item" data-go="users" id="users-nav" hidden>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="9" cy="8" r="3.5"/><path d="M3.5 20c.8-3 3-4.5 5.5-4.5s4.7 1.5 5.5 4.5"/><circle cx="17" cy="9" r="2.5"/><path d="M15.5 15.8c2.1.3 3.9 1.6 4.6 4.2"/>
+      </svg>
+      Users <span class="count" id="c-users"></span>
+    </button>
+    <button class="nav-item" data-go="settings" id="settings-nav" hidden>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M19.1 4.9 17 7M7 17l-2.1 2.1"/>
+      </svg>
+      Settings
+    </button>
+    <p class="navhint"><kbd>/</kbd> filter · <kbd>1</kbd>–<kbd>4</kbd> sections · <kbd>r</kbd> refresh</p>
+  </nav>
+
+  <main>
+    <section class="view" data-view="hosts">
+      <div class="viewhead"><h2>Hosts</h2><span class="sub" id="sub-hosts"></span></div>
+      <div id="hosts" class="grid"></div>
+      <p class="nomatch" data-nomatch="hosts">No host matches that filter.</p>
+    </section>
+
+    <section class="view" data-view="services" hidden>
+      <div class="viewhead"><h2>Services</h2><span class="sub" id="sub-services"></span>
+        <button class="btn btn-sm btn-quiet" id="scan-btn" hidden>Scan for services</button>
+      </div>
+      <div class="filterbar" id="svc-filters" hidden>
+        <span class="fgroup" id="svc-host-chips"></span>
+        <span class="fgroup" id="svc-source-chips"></span>
+        <select id="svc-sort" class="fsort" title="Sort services">
+          <option value="host">Sort: host</option>
+          <option value="source">Sort: source</option>
+          <option value="name">Sort: name</option>
+          <option value="group">Sort: group</option>
+        </select>
+      </div>
+      <div id="scan-results" hidden></div>
+      <div id="services" class="grid"></div>
+      <p class="nomatch" data-nomatch="services">No service matches that filter.</p>
+    </section>
+
+    <section class="view" data-view="containers" hidden>
+      <div class="viewhead"><h2 id="ct-title">Proxmox containers</h2><span class="sub" id="sub-containers"></span></div>
+      <div class="filterbar" id="ct-filters" hidden>
+        <span class="fgroup" id="ct-inst-chips"></span>
+        <span class="fgroup" id="ct-tag-chips"></span>
+      </div>
+      <div class="tablewrap"><div class="tscroll"><table>
+        <thead><tr>
+          <th data-sort="instance" aria-sort="ascending">Host</th>
+          <th data-sort="vmid">VMID</th>
+          <th data-sort="name">Name</th>
+          <th data-sort="status">Status</th>
+          <th data-sort="cpu">CPU</th>
+          <th data-sort="mem">Memory</th>
+          <th><span class="sr">Actions</span></th>
+        </tr></thead>
+        <tbody id="ct-body"></tbody>
+      </table></div></div>
+    </section>
+
+    <section class="view" data-view="stacks" hidden>
+      <div class="viewhead"><h2>Dockge stacks</h2><span class="sub" id="sub-stacks"></span></div>
+      <div id="stacks" class="rows"></div>
+    </section>
+
+    <section class="view" data-view="users" hidden>
+      <div class="viewhead"><h2>Users</h2><span class="sub" id="sub-users"></span></div>
+      <div class="tablewrap"><div class="tscroll"><table>
+        <thead><tr>
+          <th>Username</th><th>Role</th><th>Created</th><th><span class="sr">Actions</span></th>
+        </tr></thead>
+        <tbody id="users-body"></tbody>
+      </table></div></div>
+      <h3 class="group">Add user</h3>
+      <form id="adduser-form" class="adduser" autocomplete="off">
+        <input name="username" placeholder="username" required pattern="[A-Za-z0-9._-]{1,32}" title="letters, digits, . _ - (max 32)">
+        <select name="role"><option value="viewer">viewer</option><option value="admin">admin</option></select>
+        <input name="password" type="password" placeholder="password (min 8)" required minlength="8">
+        <button class="btn btn-primary" type="submit">Add user</button>
+      </form>
+    </section>
+
+    <section class="view" data-view="settings" hidden>
+      <div class="viewhead"><h2>Settings</h2><span class="sub">Server configuration</span></div>
+      <div class="setgrid">
+        <div class="setcard" id="update-card">
+          <h3 class="group">Update</h3>
+          <div id="update-status">Checking…</div>
+        </div>
+        <div class="setcard">
+          <h3 class="group">General</h3>
+          <label class="flabel">Dashboard title</label>
+          <input id="set-title" class="finput" placeholder="Pi Hub">
+          <label class="flabel">Dockge enabled</label>
+          <label class="chipbox"><input type="checkbox" id="set-dockge"> <span>Expose the Dockge stacks tab</span></label>
+          <label class="flabel">Auto-add discovered dockge services</label>
+          <label class="chipbox"><input type="checkbox" id="set-autoadd"> <span>Show an &quot;add new&quot; banner when the scan finds dockge services</span></label>
+          <p class="hint">nginx stream candidates are never auto-added — they need explicit confirmation.</p>
+        </div>
+        <div class="setcard">
+          <h3 class="group">Proxmox instances</h3>
+          <div id="inst-list"></div>
+          <button class="btn btn-sm btn-quiet" id="inst-add">+ Add instance</button>
+          <p class="hint">Tokens are write-only: paste one to set/replace it, leave blank to keep the stored value. SSH keys are not managed here — they live in <code>~/.ssh</code> on the Pi.</p>
+        </div>
+        <div class="setcard">
+          <h3 class="group">Scan sources</h3>
+          <div id="scan-sources"></div>
+          <p class="hint">nginx-streams and dockge-local scan the Pi itself. dockge-ssh scans a Proxmox host from the host registry (paths are fixed server-side).</p>
+        </div>
+        <div class="setcard">
+          <h3 class="group">Save</h3>
+          <button class="btn btn-primary" id="set-save">Save settings</button>
+          <span class="meta" id="set-status"></span>
+        </div>
+        <div class="setcard" id="plugins-card">
+          <h3 class="group">Plugins</h3>
+          <div id="plugins-list"></div>
+          <h3 class="group" style="margin-top:20px">Plugin repositories</h3>
+          <form id="plg-addform" class="adduser" autocomplete="off">
+            <input name="plgurl" placeholder="https://github.com/owner/repo" required
+                   pattern="https://github\.com/.+" title="GitHub repo URL">
+            <button class="btn btn-quiet" type="submit">+ Add repository</button>
+          </form>
+          <div id="plugin-sources"></div>
+          <p class="hint" style="margin-top:10px">A repository hosts plugins as GitHub releases with a <code>pihub-plugin.json</code> manifest + tarball asset. Scan finds them; install pulls from the scan cache. Removing a source uninstalls its plugins.</p>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<div id="toasts" role="status" aria-live="polite"></div>
+
+<dialog id="confirm">
+  <div class="dlg">
+    <h3 id="cf-title">Confirm</h3>
+    <p id="cf-msg"></p>
+    <div class="btn-row">
+      <button class="btn btn-quiet" value="cancel" id="cf-no">Cancel</button>
+      <button class="btn btn-primary" value="ok" id="cf-yes">Continue</button>
+    </div>
+  </div>
+</dialog>
+
+<dialog id="capsdlg" class="capsdlg">
+  <div class="dlg">
+    <h3 id="caps-title">Capabilities</h3>
+    <p class="sub" id="caps-sub"></p>
+    <div class="capswrap">
+      <table>
+        <thead><tr><th style="min-width:110px">Action</th><th id="caps-head"></th></tr></thead>
+        <tbody id="caps-body"></tbody>
+      </table>
+    </div>
+    <p class="hint">Admin role ignores caps and may do everything. Empty matrix = read-only.</p>
+    <div class="btn-row" style="justify-content:flex-end;margin-top:14px">
+      <button class="btn btn-quiet" id="caps-cancel">Cancel</button>
+      <button class="btn btn-primary" id="caps-save">Save</button>
+    </div>
+  </div>
+</dialog>
+
+<dialog id="adddlg" class="capsdlg">
+  <div class="dlg">
+    <h3 id="add-title">Add host</h3>
+    <div class="adduser" style="margin:10px 0 14px">
+      <label style="font-size:13px;color:var(--muted)">Type</label>
+      <select id="add-type">
+        <option value="host">Host</option>
+        <option value="service">Service</option>
+      </select>
+    </div>
+    <form id="add-form" autocomplete="off">
+      <div class="adduser" id="add-fields"></div>
+      <div class="btn-row" style="justify-content:flex-end;margin-top:14px">
+        <button class="btn btn-quiet" type="button" id="add-cancel">Cancel</button>
+        <button class="btn btn-primary" type="submit">Add</button>
+      </div>
+    </form>
+  </div>
+</dialog>
+
+<dialog id="editdlg" class="capsdlg">
+  <div class="dlg">
+    <h3 id="edit-title">Edit</h3>
+    <form id="edit-form" autocomplete="off">
+      <div class="adduser" id="edit-fields"></div>
+      <p class="hint" id="edit-hint"></p>
+      <div class="btn-row" style="justify-content:flex-end;margin-top:14px">
+        <button class="btn btn-quiet" type="button" id="edit-cancel">Cancel</button>
+        <button class="btn btn-primary" type="submit">Save</button>
+      </div>
+    </form>
+  </div>
+</dialog>
+
+<script>
+/* ─────────────────────────────────────────────────────────────────────────
+   Pi Hub — API surface:
+   /api/config /api/icons /api/status /api/hosts/status
+   /api/hosts/:id/:action /api/proxmox/containers /api/proxmox/container/:id/:a
+   /api/dockge/stacks /api/task/:name
+   (GET /api/hosts/dualboot is a deprecated alias — not called here)
+   ───────────────────────────────────────────────────────────────────────── */
+
+const $  = (s, r=document) => r.querySelector(s);
+const $$ = (s, r=document) => [...r.querySelectorAll(s)];
+const slug = s => String(s).toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
+const esc  = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+const SVG = {
+  ext:  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M14 4h6v6M20 4l-9 9"/><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg>',
+  play: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M6 4l14 8-14 8Z"/></svg>',
+  stop: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>',
+  power:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 3v9"/><path d="M6.5 7a8 8 0 1 0 11 0"/></svg>',
+  redo: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M20 11a8 8 0 1 0-2.3 6M20 5v6h-6"/></svg>',
+  ok:   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 13 4 4L19 7"/></svg>',
+  err:  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 7v6M12 17h.01"/><circle cx="12" cy="12" r="9"/></svg>',
+  info: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg>'
+};
+
+const S = { cfg:{}, icons:{}, hosts:[], services:[], containers:[], stacks:[],
+            hostState:{}, svcState:{}, sort:{key:'vmid', dir:1}, lastOk:0, view:'hosts' };
+
+/* ── Capability checks (v6.1) ──────────────────────────────────────────── */
+function canAct(action, target){
+  const u = window.USER || {};
+  if (u.role === 'admin') return true;
+  const caps = u.caps || {};
+  return Array.isArray(caps[action]) && caps[action].includes(String(target));
+}
+
+/* ── Auth (v6) ─────────────────────────────────────────────────────────── */
+const TOKEN_KEY = "pi_hub_token";
+let authGate = false;                       // latch: stop the 401 storm
+function gateLogin() {
+  if (authGate) return;
+  authGate = true;
+  Object.values(timers).forEach(t => clearTimeout(t));   // stop pollers
+  localStorage.removeItem(TOKEN_KEY);
+  $('#login').hidden = false;
+}
+function showSetup() {
+  authGate = true;
+  Object.values(timers).forEach(t => clearTimeout(t));
+  localStorage.removeItem(TOKEN_KEY);
+  $('#setup').hidden = false;
+}
+function apiFetch(path, opts = {}) {
+  opts = opts || {};
+  opts.headers = Object.assign({}, opts.headers || {});
+  const t = localStorage.getItem(TOKEN_KEY);
+  if (t) opts.headers["Authorization"] = "Bearer " + t;
+  return fetch(path, opts).then(r => {
+    if (r.status === 401) { gateLogin(); throw new Error("unauthorized"); }
+    return r;
+  });
+}
+$('#setup-form').addEventListener('submit', async e => {
+  e.preventDefault();
+  const err = $('#setup-err'); err.hidden = true;
+  try {
+    const r = await fetch('/api/auth/bootstrap', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ username: $('#setup-user').value.trim(), password: $('#setup-pass').value })
+    });
+    const d = await r.json().catch(() => ({}));
+    if (r.status === 429) { err.textContent = 'Too many attempts — try again later.'; err.hidden = false; return; }
+    if (r.status !== 200 || !d.token) { err.textContent = d.error || 'Setup failed.'; err.hidden = false; return; }
+    localStorage.setItem(TOKEN_KEY, d.token);
+    location.reload();
+  } catch(e2) { err.textContent = 'Network error.'; err.hidden = false; }
+});
+$('#login-form').addEventListener('submit', async e => {
+  e.preventDefault();
+  const err = $('#login-err'); err.hidden = true;
+  try {
+    const r = await fetch('/api/auth/login', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ username: $('#login-user').value.trim(), password: $('#login-pass').value })
+    });
+    const d = await r.json().catch(() => ({}));
+    if (r.status === 429) { err.textContent = 'Too many attempts — try again later.'; err.hidden = false; return; }
+    if (r.status !== 200 || !d.token) { err.textContent = 'Invalid credentials.'; err.hidden = false; return; }
+    localStorage.setItem(TOKEN_KEY, d.token);
+    location.reload();
+  } catch(e) { err.textContent = 'Network error.'; err.hidden = false; }
+});
+$('#logout').addEventListener('click', () => {
+  fetch('/api/auth/logout', { method:'POST',
+    headers:{ 'Authorization': 'Bearer ' + (localStorage.getItem(TOKEN_KEY) || '') } })
+    .catch(() => {})
+    .finally(() => { localStorage.removeItem(TOKEN_KEY); location.reload(); });
+});
+
+/* ── Users panel (v6, admin) ───────────────────────────────────────────── */
+async function loadUsers(){
+  try {
+    const d = await apiFetch('/api/auth/users').then(r => r.json());
+    if (!Array.isArray(d)) { toast(d.error || 'Failed to load users', 'err'); return; }
+    $('#users-body').innerHTML = d.map(u =>
+      '<tr><td>' + esc(u.username) + '</td><td>' + esc(u.role) + '</td><td>' + esc(u.created) + '</td>' +
+      '<td class="actions"><div class="btn-row">' +
+      '<button class="btn btn-sm btn-quiet" data-caps="' + esc(u.username) + '">Caps</button>' +
+      '<button class="btn btn-sm btn-quiet" data-pw="' + esc(u.username) + '">Password</button>' +
+      (u.username !== (window.USER || {}).username
+        ? '<button class="btn btn-sm btn-bad" data-del="' + esc(u.username) + '">Delete</button>' : '') +
+      '</div></td></tr>'
+    ).join('');
+    $('#c-users').textContent = d.length;
+    $('#sub-users').textContent = d.filter(u => u.role === 'admin').length + ' admin';
+  } catch(e) {}
+}
+$('#adduser-form').addEventListener('submit', async e => {
+  e.preventDefault();
+  const f = e.target;
+  try {
+    const d = await apiFetch('/api/auth/users', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ username: f.username.value.trim(), role: f.role.value, password: f.password.value })
+    }).then(r => r.json());
+    if (d.success) { toast(d.message || 'User created', 'ok'); f.reset(); loadUsers(); }
+    else toast(d.error || 'Failed', 'err');
+  } catch(e) {}
+});
+$('#users-body').addEventListener('click', e => {
+  const del = e.target.closest('[data-del]');
+  const pw  = e.target.closest('[data-pw]');
+  const capsBtn = e.target.closest('[data-caps]');
+  if (capsBtn) { openCapsEditor(capsBtn.dataset.caps); return; }
+  if (del) {
+    const name = del.dataset.del;
+    confirmAction('Delete user', 'Delete "' + name + '"? This revokes their sessions immediately.', async () => {
+      const d = await apiFetch('/api/auth/users/' + encodeURIComponent(name), { method:'DELETE' }).then(r => r.json());
+      toast(d.success ? 'User deleted' : (d.error || 'Failed'), d.success ? 'ok' : 'err');
+      loadUsers();
+    });
+  }
+  if (pw) {
+    const name = pw.dataset.pw;
+    const np = prompt('New password for ' + name + ' (min 8 chars):');
+    if (np === null) return;
+    apiFetch('/api/auth/users/' + encodeURIComponent(name) + '/password', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ password: np })
+    }).then(r => r.json()).then(d => toast(d.success ? 'Password updated' : (d.error || 'Failed'), d.success ? 'ok' : 'err'));
+  }
+});
+
+/* ── Caps matrix editor (v6.1) ────────────────────────────────────────── */
+const CAP_ACTIONS = [
+  ['wake',       'Wake'],
+  ['shutdown',   'Shutdown'],
+  ['reboot',     'Reboot'],
+  ['dualboot',   'Dual boot'],
+  ['containers', 'Containers'],
+];
+let capsTarget = null;
+
+function capsTargets(containers){
+  // columns: host ids + instance-qualified container targets (deduped)
+  // v7 #2: containers are `instance:vmid` — bare VMIDs are dropped by the
+  // backend post-migration and would silently wipe existing grants.
+  const seen = {};
+  const out = [];
+  (S.cfg.hosts || []).forEach(h => { if (!seen[h.id]) { seen[h.id] = 1; out.push({ id: String(h.id), label: h.name || h.id }); } });
+  (containers || S.containers || []).forEach(c => {
+    const v = (c.instance || '') + ':' + String(c.vmid);
+    if (!seen[v]) { seen[v] = 1; out.push({ id: v, label: 'CT ' + c.vmid + ' ' + (c.name || '') + ' @' + (c.instance || '?') }); }
+  });
+  if (!out.length) out.push({ id: '*', label: '(no hosts configured)' });
+  return out;
+}
+
+function openCapsEditor(username){
+  capsTarget = username;
+  // Fetch containers fresh so the caps editor always shows all container
+  // targets — even if the user hasn't visited the Containers tab yet.
+  apiFetch('/api/proxmox/containers').then(r => r.json()).then(d => {
+    const containers = (d && d.success && d.containers) ? d.containers : [];
+    const targets = capsTargets(containers);
+    $('#caps-title').textContent = 'Capabilities — ' + username;
+    $('#caps-head').innerHTML = targets.map(t => '<th class="targets">' + esc(t.label) + '</th>').join('');
+    return apiFetch('/api/auth/users').then(r => r.json()).then(users => {
+      const u = (Array.isArray(users) ? users : []).find(x => x.username === username) || {};
+      const caps = u.caps || {};
+      $('#caps-body').innerHTML = CAP_ACTIONS.map(([act, label]) =>
+        '<tr><td class="lbl">' + label + '</td>' +
+        targets.map(t => '<td><input type="checkbox" data-act="' + act + '" data-tgt="' + esc(t.id) + '"' +
+          (Array.isArray(caps[act]) && caps[act].includes(t.id) ? ' checked' : '') + '></td>').join('') +
+        '</tr>'
+      ).join('');
+      const adm = u.role === 'admin';
+      $('#caps-sub').textContent = adm ? 'Admin — has full access, caps are informational.' : 'Check the actions this user may perform on each target.';
+      $('#caps-save').disabled = adm;
+      $('#capsdlg').showModal();
+    });
+  }).catch(() => toast('Failed to load user caps', 'err'));
+}
+
+$('#caps-cancel').addEventListener('click', () => $('#capsdlg').close());
+$('#caps-save').addEventListener('click', () => {
+  const caps = {};
+  $$('#caps-body input[type=checkbox]:checked').forEach(cb => {
+    const act = cb.dataset.act, tgt = cb.dataset.tgt;
+    (caps[act] = caps[act] || []).push(tgt);
+  });
+  apiFetch('/api/auth/users/' + encodeURIComponent(capsTarget) + '/caps', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ caps })
+  }).then(r => r.json()).then(d => {
+    if (d.success) {
+      if (d.dropped && d.dropped.length) toast('Dropped: ' + d.dropped.join(', '), 'err');
+      else toast('Capabilities saved', 'ok');
+      $('#capsdlg').close();
+    } else toast(d.error || 'Failed', 'err');
+  }).catch(() => toast('Failed to save caps', 'err'));
+});
+
+/* ── Add host/service (v6.2, admin only) ───────────────────────────────── */
+const ADD_FIELDS = {
+  host: [
+    ['id',        'text',     'id (e.g. nas)', true],
+    ['name',      'text',     'Display name',  true],
+    ['ip',        'text',     'IP address',    true],
+    ['mac',       'text',     'MAC (AA:BB:CC:DD:EE:FF)', true],
+    ['os_label',  'text',     'OS label (optional)', false],
+    ['icon',      'text',     'Icon key (optional)', false],
+  ],
+  service: [
+    ['name', 'text', 'Name', true],
+    ['url',  'text', 'URL (http://…)', true],
+    ['status_port', 'number', 'Status port (optional)', false],
+    ['group', 'text', 'Group (optional)', false],
+    ['icon', 'text', 'Icon key (optional)', false],
+  ],
+};
+const ADD_CAPS = ['wake', 'shutdown', 'reboot', 'grub_switch', 'dualboot'];
+
+function addFields(kind){
+  let html = ADD_FIELDS[kind].map(([n, t, ph, req]) =>
+    '<input type="' + t + '" name="' + n + '" placeholder="' + esc(ph) + '"' +
+    (req ? ' required' : '') + '>'
+  ).join('');
+  if (kind === 'host') {
+    html += '<select name="type"><option value="linux">Linux</option><option value="windows">Windows</option></select>';
+    html += '<div class="caps-chips">' + ADD_CAPS.map(c =>
+      '<label class="chipbox"><input type="checkbox" name="cap" value="' + c + '"' +
+      (['wake', 'shutdown', 'reboot'].includes(c) ? ' checked' : '') + '>' + c + '</label>'
+    ).join('') + '</div>';
+  }
+  $('#add-fields').innerHTML = html;
+}
+
+function openAddDialog(){
+  const kind = $('#add-type').value;
+  $('#add-title').textContent = kind === 'host' ? 'Add host' : 'Add service';
+  addFields(kind);
+  $('#adddlg').showModal();
+}
+$('#add').addEventListener('click', openAddDialog);
+$('#add-type').addEventListener('change', openAddDialog);
+$('#add-cancel').addEventListener('click', () => $('#adddlg').close());
+$('#add-form').addEventListener('submit', async e => {
+  e.preventDefault();
+  const kind = $('#add-type').value;
+  const f = e.target;
+  const body = {};
+  ADD_FIELDS[kind].forEach(([n]) => { const v = (f[n] || {}).value; if (v !== undefined && v !== '') body[n] = v; });
+  if (kind === 'host') {
+    if (f.type) body.type = f.type.value;
+    body.capabilities = $$('#add-fields input[name=cap]:checked').map(c => c.value);
+  }
+  try {
+    const d = await apiFetch('/api/config/' + (kind === 'host' ? 'hosts' : 'services'), {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(body)
+    }).then(r => r.json());
+    if (d.success) {
+      toast(d.message || 'Added', 'ok');
+      $('#adddlg').close();
+      S.cfg = await apiFetch('/api/config').then(r => r.json());
+      renderHosts(S.cfg.hosts || []);
+      renderServices(S.cfg.services || []);
+    } else toast(d.error || 'Failed', 'err');
+  } catch(err) { toast('Request failed', 'err'); }
+});
+
+/* ── Edit host/service (v7, admin only) ───────────────────────────────── */
+let editKind = null, editId = null, editRec = null;
+
+const EDIT_HOST_FIELDS = [
+  ['name',           'text',   'Display name',        true],
+  ['ip',             'text',   'IP address',          true],
+  ['mac',            'text',   'MAC (AA:BB:CC:DD:EE:FF)', true],
+  ['type',           'select', [['linux','Linux'],['windows','Windows']], true],
+  ['os_label',       'text',   'OS label',            false],
+  ['icon',           'text',   'Icon key',            false],
+  ['ssh_user',       'text',   'SSH user (optional)', false],
+  ['ssh_shutdown_cmd','text',  'SSH shutdown cmd (optional)', false],
+];
+const EDIT_SERVICE_FIELDS = [
+  ['name',        'text',   'Name',                  true],
+  ['url',         'text',   'URL (http://…)',        true],
+  ['status_port', 'number', 'Status port',           false],
+  ['status_host', 'text',   'Status host (optional)', false],
+  ['health_path', 'text',   'Health path (optional)', false],
+  ['group',       'text',   'Group (optional)',      false],
+  ['icon',        'text',   'Icon key (optional)',   false],
+  ['host',        'text',   'Origin host (optional)', false],
+  ['source',      'select', [['manual','manual'],['dockge','dockge'],['nginx','nginx']], false],
+];
+
+function editFields(kind, rec){
+  const fields = kind === 'host' ? EDIT_HOST_FIELDS : EDIT_SERVICE_FIELDS;
+  const peers = kind === 'host'
+    ? (S.cfg.hosts || []).filter(h => h.id !== rec.id).map(h => [h.id, h.name || h.id])
+    : [];
+  let html = fields.map(([n, t, ph, req]) => {
+    const val = rec[n] != null ? rec[n] : '';
+    if (t === 'select') {
+      const opts = Array.isArray(ph) ? ph : [];
+      if (n === 'type' && rec.type) opts.unshift([rec.type, rec.type]);
+      return '<select name="' + n + '">' + opts.map(([v, l]) =>
+        '<option value="' + esc(v) + '"' + (String(val) === String(v) ? ' selected' : '') + '>' + esc(l) + '</option>'
+      ).join('') + '</select>';
+    }
+    return '<input type="' + t + '" name="' + n + '" value="' + esc(val) + '" placeholder="' + esc(ph) + '"' +
+           (req ? ' required' : '') + '>';
+  }).join('');
+  if (kind === 'host') {
+    html += '<select name="dual_boot_peer"><option value="">No dual-boot peer</option>' +
+      peers.map(([id, label]) => '<option value="' + esc(id) + '"' +
+        (rec.dual_boot_peer === id ? ' selected' : '') + '>' + esc(label) + '</option>').join('') +
+      '</select>';
+    html += '<div class="caps-chips">' + ADD_CAPS.map(c =>
+      '<label class="chipbox"><input type="checkbox" name="cap" value="' + c + '"' +
+      ((rec.capabilities || []).includes(c) ? ' checked' : '') + '>' + c + '</label>'
+    ).join('') + '</div>';
+  }
+  $('#edit-fields').innerHTML = html;
+}
+
+function openEdit(kind, id){
+  editKind = kind; editId = id;
+  if (!S.fullcfg) { loadSettings().then(() => openEdit(kind, id)); return; }
+  const rec = kind === 'host'
+    ? (S.fullcfg.hosts || []).find(h => h.id === id)
+    : (S.fullcfg.services || []).find(s => s.name === id);
+  if (!rec) { toast('Record not found — reload settings?', 'err'); return; }
+  editRec = rec;
+  $('#edit-title').textContent = 'Edit ' + (kind === 'host' ? 'host' : 'service');
+  editFields(kind, rec);
+  $('#edit-hint').textContent = kind === 'host'
+    ? 'The id "' + id + '" is immutable. Deleting removes it from every user\'s caps.'
+    : 'Changes apply immediately.';
+  $('#editdlg').showModal();
+}
+$('#edit-cancel').addEventListener('click', () => $('#editdlg').close());
+$('#edit-form').addEventListener('submit', async e => {
+  e.preventDefault();
+  const f = e.target;
+  const body = {};
+  const fields = editKind === 'host' ? EDIT_HOST_FIELDS : EDIT_SERVICE_FIELDS;
+  fields.forEach(([n]) => {
+    const el = f[n];
+    if (!el) return;
+    const v = el.type === 'checkbox' ? el.checked : el.value;
+    if (el.type === 'number') body[n] = v === '' ? null : +v;
+    else body[n] = v;
+  });
+  if (editKind === 'host') {
+    body.dual_boot_peer = f.dual_boot_peer ? f.dual_boot_peer.value : '';
+    body.capabilities = $$('#edit-fields input[name=cap]:checked').map(c => c.value);
+    if (!body.ssh_user) body.ssh_user = '';
+    if (!body.ssh_shutdown_cmd) body.ssh_shutdown_cmd = '';
+  }
+  try {
+    const path = '/api/config/' + (editKind === 'host' ? 'hosts/' + encodeURIComponent(editId)
+                                                        : 'services/' + encodeURIComponent(editId));
+    const d = await apiFetch(path, { method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(body) }).then(r => r.json());
+    if (d.success) {
+      toast(d.message || 'Saved', 'ok');
+      $('#editdlg').close();
+      await refreshConfig();
+    } else toast(d.error || 'Failed', 'err');
+  } catch(err) { toast('Request failed', 'err'); }
+});
+
+function removeHost(id, name){
+  confirmAction('Delete host', 'Delete "' + name + '"? Its dual-boot peer links and all user caps for this host are removed.', async () => {
+    const d = await apiFetch('/api/config/hosts/' + encodeURIComponent(id), { method:'DELETE' }).then(r => r.json());
+    toast(d.success ? 'Host deleted' : (d.error || 'Failed'), d.success ? 'ok' : 'err');
+    if (d.success) await refreshConfig();
+  });
+}
+function removeService(name){
+  confirmAction('Delete service', 'Delete "' + name + '"?', async () => {
+    const d = await apiFetch('/api/config/services/' + encodeURIComponent(name), { method:'DELETE' }).then(r => r.json());
+    toast(d.success ? 'Service deleted' : (d.error || 'Failed'), d.success ? 'ok' : 'err');
+    if (d.success) await refreshConfig();
+  });
+}
+async function refreshConfig(){
+  try {
+    S.cfg = await apiFetch('/api/config').then(r => r.json());
+    renderHosts(S.cfg.hosts || []);
+    renderServices(S.cfg.services || []);
+    renderServiceFilters();
+  } catch(e) {}
+}
+const editBtn  = (kind, id, name) => '<button class="btn btn-sm btn-quiet" data-act="edit" data-kind="' + kind +
+  '" data-id="' + esc(id) + '" data-name="' + esc(name) + '">Edit</button>';
+const delBtn   = (kind, id, name) => '<button class="btn btn-sm btn-quiet" data-act="del" data-kind="' + kind +
+  '" data-id="' + esc(id) + '" data-name="' + esc(name) + '">Delete</button>';
+
+const iconTile = name => '<span class="icon">' + (S.icons[name] || S.icons.server || '') + '</span>';
+const chip = (state, id) => '<span class="chip"' + (id ? ' id="'+id+'"' : '') + ' data-state="'+esc(state)+'">' +
+                            '<span class="dot"></span>' + esc(state) + '</span>';
+
+/* ── Views ─────────────────────────────────────────────────────────────── */
+function showView(v){
+  S.view = v;
+  $$('.view').forEach(s => s.hidden = s.dataset.view !== v);
+  $$('.nav-item').forEach(n => n.dataset.go === v ? n.setAttribute('aria-current','page')
+                                                  : n.removeAttribute('aria-current'));
+  if (v === 'users') loadUsers();
+  if (v === 'settings') loadSettings();
+  applyFilter();
+}
+$('#sidebar').addEventListener('click', e => {
+  const item = e.target.closest('.nav-item');
+  if (item) showView(item.dataset.go);
+});
+
+/* ── Filter (v7: + service origin chips, container instance/tag chips) ─── */
+function applyFilter(){
+  const q = $('#q').value.trim().toLowerCase();
+  ['hosts','services'].forEach(view => {
+    const cards = $$('#' + view + ' .card');
+    let shown = 0;
+    cards.forEach(c => {
+      let hit = !q || (c.dataset.hay || '').includes(q);
+      if (view === 'services' && hit) {
+        const s = (S.cfg.services || []).find(x => slug(x.name) === c.id.replace('svc-',''));
+        if (s) {
+          if (svcHostFilter && (s.host || 'other') !== svcHostFilter) hit = false;
+          if (svcSourceFilter && (s.source || 'manual') !== svcSourceFilter) hit = false;
+        }
+      }
+      c.hidden = !hit;
+      if (hit) shown++;
+    });
+    const nm = $('[data-nomatch="' + view + '"]');
+    if (nm) nm.style.display = (q && !shown && cards.length) ? 'block' : 'none';
+  });
+  $$('#stacks .row').forEach(r => {
+    r.hidden = !!q && !(r.dataset.hay || '').includes(q);
+  });
+  $$('#ct-body tr').forEach(r => {
+    let hit = !q || (r.dataset.hay || '').includes(q);
+    if (hit && ctInstFilter && r.dataset.inst !== ctInstFilter) hit = false;
+    if (hit && ctTagFilter && !(r.dataset.tags || '').split('|').includes(ctTagFilter)) hit = false;
+    r.hidden = !hit;
+  });
+}
+$('#q').addEventListener('input', applyFilter);
+
+/* ── Keyboard ──────────────────────────────────────────────────────────── */
+const VIEWS = ['hosts','services','containers','stacks'];
+document.addEventListener('keydown', e => {
+  const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName);
+  if (e.key === '/' && !typing) { e.preventDefault(); $('#q').focus(); return; }
+  if (e.key === 'Escape' && typing) { $('#q').value = ''; applyFilter(); $('#q').blur(); return; }
+  if (typing || e.metaKey || e.ctrlKey || e.altKey) return;
+  if (e.key >= '1' && e.key <= '4') showView(VIEWS[+e.key - 1]);
+  if (e.key.toLowerCase() === 'r') refreshAll();
+});
+
+/* ── Theme ─────────────────────────────────────────────────────────────── */
+$('#theme').addEventListener('click', () => {
+  const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+  document.documentElement.dataset.theme = next;
+  try { localStorage.setItem('pihub-theme', next); } catch(e) {}
+});
+
+/* ── Toast ─────────────────────────────────────────────────────────────── */
+function toast(msg, kind='info'){
+  const el = document.createElement('div');
+  el.className = 'toast'; el.dataset.kind = kind;
+  el.innerHTML = (SVG[kind] || SVG.info) + '<span>' + esc(msg) + '</span>';
+  $('#toasts').appendChild(el);
+  setTimeout(() => el.remove(), 4000);
+}
+
+/* ── Confirm dialog ────────────────────────────────────────────────────── */
+function confirmAction(title, msg, onOk){
+  const d = $('#confirm');
+  $('#cf-title').textContent = title;
+  $('#cf-msg').textContent = msg;
+  const yes = () => { d.close(); cleanup(); onOk(); };
+  const no  = () => { d.close(); cleanup(); };
+  const cleanup = () => { $('#cf-yes').removeEventListener('click', yes); $('#cf-no').removeEventListener('click', no); };
+  $('#cf-yes').addEventListener('click', yes);
+  $('#cf-no').addEventListener('click', no);
+  d.showModal();
+}
+
+/* ── Hosts ─────────────────────────────────────────────────────────────── */
+function renderHosts(hosts){
+  const g = $('#hosts'); g.innerHTML = '';
+  const done = {};
+  hosts.forEach(h => {
+    if (done[h.id]) return;
+    if (h.dual_boot_peer && h.type === 'windows') return;
+    if (h.dual_boot_peer) {
+      done[h.id] = true; done[h.dual_boot_peer] = true;
+      g.appendChild(dualbootCard(h, hosts.find(x => x.id === h.dual_boot_peer)));
+    } else {
+      done[h.id] = true;
+      g.appendChild(simpleCard(h));
+    }
+  });
+  $('#c-hosts').textContent = g.children.length;
+  applyFilter();
+}
+
+function cardShell(id, hay){
+  const c = document.createElement('div');
+  c.className = 'card';
+  c.dataset.state = 'pending';
+  c.dataset.hay = hay.toLowerCase();
+  if (id) c.id = id;
+  return c;
+}
+
+function simpleCard(h){
+  const caps = h.capabilities || [];
+  const admin = window.USER && window.USER.role === 'admin';
+  const card = cardShell('host-' + h.id, [h.name, h.ip, h.os_label, h.type].filter(Boolean).join(' '));
+  card.innerHTML =
+    '<div class="top">' + iconTile(h.icon) + '<h4>' + esc(h.name) + '</h4>' +
+      chip('pending', 'hdot-' + esc(h.id)) + '</div>' +
+    '<div class="meta">' + esc(h.os_label || h.type || '') + ' · ' + esc(h.ip) + '</div>' +
+    '<div class="task" id="' + esc(h.id) + '__prog"><span class="spinner"></span><span class="txt"></span></div>' +
+    '<div class="btn-row">' +
+      (admin ? editBtn('host', h.id, h.name) + delBtn('host', h.id, h.name) : '') +
+      (caps.includes('wake') && canAct('wake', h.id) ? btn('ok',   SVG.power, 'Wake',     'wake', h.id)       : '') +
+      (caps.includes('reboot') && canAct('reboot', h.id) ? btn('quiet',SVG.redo,  'Reboot',   'reboot', h.id)     : '') +
+      (caps.includes('shutdown') && canAct('shutdown', h.id) ? btn('bad',  SVG.power, 'Shutdown', 'shutdown', h.id)   : '') +
+    '</div>';
+  return card;
+}
+
+function btn(kind, icon, label, act, id, extra=''){
+  return '<button class="btn btn-sm btn-' + kind + '" data-act="' + act + '" data-id="' + esc(id) + '" ' +
+         extra + '>' + icon + label + '</button>';
+}
+
+function dualbootCard(linux, win){
+  const admin = window.USER && window.USER.role === 'admin';
+  const card = cardShell('host-' + linux.id,
+    [linux.name, win && win.name, linux.ip, win && win.ip].filter(Boolean).join(' '));
+  card.innerHTML =
+    '<div class="top">' + iconTile(linux.icon) +
+      '<h4>' + esc(win.name) + ' / ' + esc(linux.name) + '</h4>' +
+      chip('pending', 'hdot-' + esc(linux.id)) + '</div>' +
+    '<div class="meta">Debian ' + esc(linux.ip) + ' · Win ' + esc(win.ip) + '</div>' +
+    '<div class="task" id="' + esc(linux.id) + '__prog"><span class="spinner"></span><span class="txt"></span></div>' +
+    // admin buttons live OUTSIDE the db-row: paintDualboot owns that row
+    (admin ? '<div class="btn-row" id="db-admin-' + esc(linux.id) + '">' +
+      editBtn('host', linux.id, linux.name) + delBtn('host', linux.id, linux.name) + '</div>' : '') +
+    '<div class="btn-row" id="db-' + esc(linux.id) + '"></div>';
+  setTimeout(() => paintDualboot(linux, win, null), 0);
+  return card;
+}
+
+function paintDualboot(linux, win, state){
+  const row = $('#db-' + linux.id);
+  if (!row) return;
+  const w = canAct('wake', linux.id), r = canAct('reboot', linux.id),
+        s = canAct('shutdown', linux.id), sw = canAct('shutdown', win ? win.id : ''),
+        d = canAct('dualboot', linux.id);
+  if (state === null || state === 'MACHINE_OFF') {
+    row.innerHTML =
+      (w ? btn('ok', SVG.power, 'Boot Debian',  'wake', linux.id) : '') +
+      (d ? btn('quiet', SVG.power, 'Boot Windows', 'db-boot-win', linux.id) : '');
+  } else if (state === 'DEBIAN_RUNNING') {
+    row.innerHTML =
+      (d ? btn('quiet', SVG.redo, 'Switch to Windows', 'db-switch-win', linux.id) : '') +
+      (r ? btn('quiet', SVG.redo, 'Reboot',   'reboot', linux.id) : '') +
+      (s ? btn('bad',   SVG.power,'Shutdown', 'shutdown', linux.id) : '');
+  } else if (state === 'WINDOWS_RUNNING') {
+    row.innerHTML =
+      (d ? btn('quiet', SVG.redo, 'Switch to Debian', 'db-boot-deb', linux.id) : '') +
+      (sw ? btn('bad',   SVG.power,'Shutdown', 'shutdown', win.id) : '');
+  } else {
+    row.innerHTML = '<span class="meta">State unknown — check the agent on ' + esc(linux.ip) + '</span>';
+  }
+}
+
+function hostAction(id, action){
+  apiFetch('/api/hosts/' + id + '/' + action, { method:'POST' })
+    .then(r => r.json())
+    .then(d => toast(d.message || action, d.success === false ? 'err' : 'ok'))
+    .catch(() => toast(action + ' failed to reach the host', 'err'));
+}
+
+function dualbootAction(id, action, task, body){
+  const go = () => {
+    apiFetch('/api/hosts/' + id + '/' + action, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: body ? JSON.stringify(body) : undefined
+    }).then(r => r.json()).then(d => {
+      toast(d.message || action, d.success === false ? 'err' : 'ok');
+      if (task && d.task) pollTask(id, task, task === 'boot_windows' ? 'Booting Windows' : 'Booting Debian', 3000, 40);
+    }).catch(() => toast('Boot request failed', 'err'));
+  };
+  if (/windows|debian/.test(action))
+    confirmAction('Switch operating system',
+      'Takes about two minutes: power on, wait for Debian, flip the GRUB entry, reboot.', go);
+  else go();
+}
+
+/* Progress now targets the card that started the task, not a hardcoded id. */
+function pollTask(hostId, name, label, intervalMs, max){
+  const el = $('#' + CSS.escape(hostId + '__prog'));
+  const txt = el && el.querySelector('.txt');
+  if (el) el.dataset.on = '1';
+  let n = 0;
+  (function tick(){
+    apiFetch('/api/task/' + name).then(r => r.json()).then(t => {
+      n++;
+      if (txt) txt.textContent = label + ' — ' + (t.message || t.status);
+      if (t.status === 'done') { toast(label + ' complete', 'ok'); if (el) delete el.dataset.on; }
+      else if (t.status === 'timeout' || t.status === 'error') { toast(t.message || 'Task failed', 'err'); if (el) delete el.dataset.on; }
+      else if (n < max) setTimeout(tick, intervalMs);
+      else if (el) delete el.dataset.on;
+    }).catch(() => { if (el) delete el.dataset.on; });
+  })();
+}
+
+/* ── Services (v7: origin chips + sort + admin edit/delete) ────────────── */
+const SVC_SOURCES = { manual:'manual', dockge:'dockge', nginx:'nginx' };
+let svcHostFilter = '', svcSourceFilter = '';
+
+function renderServiceFilters(){
+  const hosts = [...new Set((S.cfg.services || []).map(s => s.host || 'other'))].sort();
+  const sources = [...new Set((S.cfg.services || []).map(s => s.source || 'manual'))].sort();
+  const hbox = $('#svc-host-chips'), sbox = $('#svc-source-chips');
+  $('#svc-filters').hidden = !(hosts.length || sources.length);
+  hbox.innerHTML = hosts.map(h =>
+    '<button class="fchip' + (svcHostFilter === h ? ' on' : '') + '" data-fhost="' + esc(h) + '">' + esc(h) + '</button>'
+  ).join('');
+  sbox.innerHTML = sources.map(s =>
+    '<button class="fchip' + (svcSourceFilter === s ? ' on' : '') + '" data-fsrc="' + esc(s) + '">' + esc(s) + '</button>'
+  ).join('');
+  applyFilter();
+}
+
+function svcSortKey(s, key){
+  if (key === 'host') return String(s.host || 'other');
+  if (key === 'source') return String(s.source || 'manual');
+  if (key === 'group') return String(s.group || '');
+  return String(s.name || '').toLowerCase();
+}
+
+function renderServices(services){
+  const g = $('#services'); g.innerHTML = '';
+  const sortKey = $('#svc-sort').value;
+  [...services].sort((a, b) => {
+    if (sortKey === 'host') {
+      const d = svcSortKey(a,'host').localeCompare(svcSortKey(b,'host'));
+      if (d) return d;
+      return svcSortKey(a,'source').localeCompare(svcSortKey(b,'source'));
+    }
+    return svcSortKey(a, sortKey).localeCompare(svcSortKey(b, sortKey));
+  }).forEach(s => {
+    const id = slug(s.name);
+    const admin = window.USER && window.USER.role === 'admin';
+    const origin = (s.host ? esc(s.host) + (s.source ? ' · ' + esc(s.source) : '') : (s.source ? esc(s.source) : ''));
+    const card = cardShell('svc-' + id, [s.name, s.url, s.host || '', s.source || ''].join(' '));
+    card.innerHTML =
+      '<div class="top">' + iconTile(s.icon) + '<h4>' + esc(s.name) + '</h4>' + chip('pending', 'sdot-' + id) + '</div>' +
+      '<div class="meta">' + esc(String(s.url).replace(/^https?:\/\//,'')) + '</div>' +
+      (origin ? '<div class="meta"><span class="tagpill">' + origin + '</span></div>' : '') +
+      '<div class="btn-row">' +
+        (admin ? editBtn('service', s.name, s.name) + delBtn('service', s.name, s.name) : '') +
+        '<a class="btn btn-primary btn-block" id="sopen-' + id + '" href="' + esc(s.url) + '" ' +
+        'target="_blank" rel="noopener">' + SVG.ext + 'Open</a></div>';
+    g.appendChild(card);
+  });
+  $('#c-services').textContent = g.children.length;
+  renderServiceFilters();
+  applyFilter();
+}
+
+function renderProxmoxCard(pm){
+  if (!pm) return;
+  const host = pm.host || 'proxmox';
+  const url = 'https://' + host + ':8006';
+  const card = cardShell('svc-proxmox', 'proxmox ' + host + ' ' + url);
+  card.innerHTML =
+    '<div class="top">' + iconTile('proxmox') + '<h4>Proxmox</h4>' + chip('pending','pdot') + '</div>' +
+    '<div class="meta">' + esc(host) + ':8006</div>' +
+    '<div class="meta" id="pbadge" style="font-family:var(--sans)">Checking…</div>' +
+    '<div class="btn-row"><a class="btn btn-primary btn-block" id="popen" href="' + esc(url) + '" ' +
+      'target="_blank" rel="noopener">' + SVG.ext + 'Open web UI</a></div>';
+  $('#services').prepend(card);
+}
+
+/* ── Stacks ────────────────────────────────────────────────────────────── */
+function renderStacks(stacks){
+  const el = $('#stacks'); el.innerHTML = '';
+  if (!stacks || !stacks.length) {
+    el.innerHTML = '<div class="empty"><strong>No stacks reported</strong>' +
+      '<p>Dockge returned an empty list. Check that the agent is reachable.</p></div>';
+    $('#c-stacks').textContent = '0';
+    return;
+  }
+  stacks.forEach(st => {
+    const row = document.createElement('div');
+    row.className = 'row';
+    row.dataset.hay = (st.name + ' ' + st.status).toLowerCase();
+    row.innerHTML = '<span class="name">' + esc(st.name) + '</span>' + chip(st.status);
+    el.appendChild(row);
+  });
+  $('#c-stacks').textContent = stacks.length;
+  $('#sub-stacks').textContent = stacks.filter(s => s.status === 'running').length + ' running';
+  applyFilter();
+}
+
+/* ── Containers ────────────────────────────────────────────────────────── */
+$$('th[data-sort]').forEach(th => th.addEventListener('click', () => {
+  const key = th.dataset.sort;
+  S.sort = { key, dir: S.sort.key === key ? -S.sort.dir : 1 };
+  $$('th[data-sort]').forEach(o => o.removeAttribute('aria-sort'));
+  th.setAttribute('aria-sort', S.sort.dir === 1 ? 'ascending' : 'descending');
+  paintContainers();
+}));
+
+function renderContainers(d){
+  if (!d || !d.success || !d.containers) {
+    S.containers = [];
+    $('#ct-body').innerHTML = '<tr><td colspan="6"><div class="empty">' +
+      '<strong>Proxmox is not answering</strong><p>' + esc(d && d.error || 'No response from the API.') + '</p>' +
+      '<button class="btn btn-quiet btn-sm" data-act="ct-retry">Try again</button></div></td></tr>';
+    $('#c-containers').textContent = '';
+    $('#sub-containers').textContent = '';
+    return;
+  }
+  S.containers = d.containers;
+  paintContainers();
+}
+
+/* ── Containers (v7: instance column, tags, instance/tag filter) ───────── */
+let ctInstFilter = '', ctTagFilter = '';
+
+function renderCtFilters(){
+  const insts = [...new Set((S.containers || []).map(c => c.instance || ''))].filter(Boolean).sort();
+  const tags = [...new Set((S.containers || []).flatMap(c => c.tags || []))].sort();
+  const ibox = $('#ct-inst-chips'), tbox = $('#ct-tag-chips');
+  $('#ct-filters').hidden = !(insts.length || tags.length);
+  ibox.innerHTML = insts.map(i =>
+    '<button class="fchip' + (ctInstFilter === i ? ' on' : '') + '" data-cinst="' + esc(i) + '">' + esc(i) + '</button>'
+  ).join('');
+  tbox.innerHTML = tags.map(t =>
+    '<button class="fchip' + (ctTagFilter === t ? ' on' : '') + '" data-ctag="' + esc(t) + '">#' + esc(t) + '</button>'
+  ).join('');
+  applyFilter();
+}
+
+function paintContainers(){
+  const tb = $('#ct-body');
+  const list = [...S.containers].sort((a, b) => {
+    const k = S.sort.key;
+    let x = a[k], y = b[k];
+    if (k === 'vmid' || k === 'cpu' || k === 'mem') { x = +x || 0; y = +y || 0; }
+    else { x = String(x || '').toLowerCase(); y = String(y || '').toLowerCase(); }
+    return (x < y ? -1 : x > y ? 1 : 0) * S.sort.dir;
+  });
+
+  const sig = JSON.stringify(list);
+  if (paintContainers._sig === sig) { renderCtFilters(); return; }
+  paintContainers._sig = sig;
+
+  if (!list.length) {
+    tb.innerHTML = '<tr><td colspan="7"><div class="empty"><strong>No containers</strong>' +
+      '<p>Proxmox answered, but the list is empty.</p></div></td></tr>';
+  } else {
+    tb.innerHTML = list.map(ct => {
+      const inst = ct.instance || '';
+      const run = ct.status === 'running';
+      const cpu = run && ct.cpu != null ? +(ct.cpu * 100) : null;
+      const memGB = run && ct.mem ? ct.mem / 1073741824 : null;
+      const memPct = run && ct.mem && ct.maxmem ? (ct.mem / ct.maxmem) * 100 : null;
+      const tags = (ct.tags || []).map(t => '<span class="tagpill">#' + esc(t) + '</span>').join('');
+      const capTarget = inst + ':' + ct.vmid;
+      return '<tr data-hay="' + esc((inst + ' ' + ct.vmid + ' ' + ct.name + ' ' + ct.status).toLowerCase()) + '"' +
+        ' data-inst="' + esc(inst) + '" data-tags="' + esc((ct.tags || []).join('|')) + '">' +
+        '<td>' + esc(inst) + '</td>' +
+        '<td class="num">' + esc(ct.vmid) + '</td>' +
+        '<td style="font-weight:500">' + esc(ct.name) + tags + '</td>' +
+        '<td>' + chip(ct.status) + '</td>' +
+        '<td>' + usage(cpu, cpu == null ? '—' : cpu.toFixed(1) + '%') + '</td>' +
+        '<td>' + usage(memPct, memGB == null ? '—' : memGB.toFixed(1) + ' GB') + '</td>' +
+        '<td class="actions"><div class="btn-row">' +
+          (run && canAct('containers', capTarget) ? btn('bad', SVG.stop, 'Stop',  'ct-stop', ct.vmid, 'data-name="' + esc(ct.name) + '" data-inst="' + esc(inst) + '"')
+               : (!run && canAct('containers', capTarget) ? btn('ok',  SVG.play, 'Start', 'ct-start', ct.vmid, 'data-name="' + esc(ct.name) + '" data-inst="' + esc(inst) + '"') : '')) +
+        '</div></td></tr>';
+    }).join('');
+  }
+
+  const running = S.containers.filter(c => c.status === 'running').length;
+  $('#c-containers').textContent = S.containers.length;
+  $('#sub-containers').textContent = S.containers.length
+    ? running + ' of ' + S.containers.length + ' running' : '';
+  renderCtFilters();
+  applyFilter();
+}
+
+function usage(pct, label){
+  if (pct == null) return '<span class="meta">' + label + '</span>';
+  const p = Math.max(0, Math.min(100, pct));
+  return '<div class="usage"><span class="val">' + label + '</span>' +
+         '<span class="bar"><i style="width:' + p.toFixed(0) + '%"' + (p > 85 ? ' data-hot' : '') + '></i></span></div>';
+}
+
+/* Delegate all card/container buttons — never inline onclick (XSS: esc() is
+   not safe in JS-string contexts, HTML entities are decoded before eval). */
+document.addEventListener('click', e => {
+  const b = e.target.closest('button[data-act]');
+  if (!b || b.disabled) return;
+  const id = b.dataset.id, act = b.dataset.act;
+  if (act === 'edit') { if (window.USER && window.USER.role === 'admin') openEdit(b.dataset.kind, b.dataset.id); return; }
+  if (act === 'del') { if (window.USER && window.USER.role === 'admin') {
+      b.dataset.kind === 'host' ? removeHost(b.dataset.id, b.dataset.name) : removeService(b.dataset.id);
+    } return; }
+  if (act === 'wake' || act === 'reboot' || act === 'shutdown') hostAction(id, act);
+  else if (act === 'db-boot-win')  dualbootAction(id, 'start/windows', 'boot_windows', null);
+  else if (act === 'db-boot-deb')  dualbootAction(id, 'start/debian', 'boot_debian', null);
+  else if (act === 'db-switch-win') dualbootAction(id, 'dualboot/switch', null, { target: 'windows' });
+  else if (act === 'ct-start' || act === 'ct-stop') ctAction(id, act.slice(3), b.dataset.name || '', b.dataset.inst || '');
+  else if (act === 'ct-retry') pollContainers();
+});
+
+function ctAction(vmid, action, name, inst){
+  const base = '/api/proxmox/' + encodeURIComponent(inst || '') + '/container/' + vmid + '/' + action;
+  const run = () => apiFetch(base, { method:'POST' })
+    .then(r => r.json())
+    .then(d => { toast(d.message || (action + ' ' + vmid), d.success === false ? 'err' : 'ok');
+                 setTimeout(pollContainers, 1500); })
+    .catch(() => toast('Request failed', 'err'));
+  if (action === 'stop') confirmAction('Stop container', 'Stop ' + (name || vmid) + ' now?', run);
+  else run();
+}
+
+/* ── Health strip ──────────────────────────────────────────────────────── */
+function paintHealth(){
+  const all = [...Object.values(S.hostState), ...Object.values(S.svcState)];
+  const up   = all.filter(s => s === 'online').length;
+  const down = all.filter(s => s === 'offline').length;
+  $('#h-up').textContent = up;
+  $('#h-down').textContent = down;
+  $('#h-down-pill').hidden = !down;
+  $('#h-down-pill').classList.toggle('bad', down > 0);
+  $('#sub-hosts').textContent = Object.keys(S.hostState).length
+    ? Object.values(S.hostState).filter(s => s === 'online').length + ' online' : '';
+  $('#sub-services').textContent = Object.keys(S.svcState).length
+    ? Object.values(S.svcState).filter(s => s === 'online').length + ' reachable' : '';
+}
+
+function setChip(el, state){
+  if (!el) return;
+  el.dataset.state = state;
+  el.lastChild.textContent = state;
+  const card = el.closest('.card');
+  if (card) card.dataset.state = state;
+}
+
+function stamp(){
+  if (!S.lastOk) return;
+  const s = Math.round((Date.now() - S.lastOk) / 1000);
+  $('#stamp').textContent = s < 5 ? 'just now' : s < 60 ? s + 's ago' : Math.round(s/60) + 'm ago';
+}
+setInterval(stamp, 5000);
+
+/* ── Polling (pauses while the tab is hidden) ──────────────────────────── */
+const timers = {};
+function loop(key, fn, ms){
+  clearTimeout(timers[key]);
+  (async function tick(){
+    if (!document.hidden) { try { await fn(); } catch(e) {} }
+    timers[key] = setTimeout(tick, ms);
+  })();
+}
+
+async function pollHosts(){
+  const st = await apiFetch('/api/hosts/status').then(r => r.json());
+  Object.entries(st).forEach(([id, info]) => {
+    const hcfg = (S.cfg.hosts || []).find(h => h.id === id);
+    const online = !!(info && info.online);
+    const state = online ? 'online' : 'offline';
+
+    if (hcfg && hcfg.dual_boot_peer) {
+      // Dual-boot host: paint card from rich status record
+      const win = (S.cfg.hosts || []).find(h => h.id === hcfg.dual_boot_peer);
+      paintDualboot(hcfg, win, info.dualboot_state);
+      const dbOnline = !!(info.linux_online || info.windows_online);
+      const dbState = info.linux_online ? 'online' : (info.windows_online ? 'degraded' : 'offline');
+      S.hostState[id] = dbOnline ? 'online' : 'offline';
+      setChip($('#hdot-' + CSS.escape(id)), dbState);
+    } else {
+      S.hostState[id] = state;
+      setChip($('#hdot-' + CSS.escape(id)), state);
+      const card = $('#host-' + CSS.escape(id));
+      if (card) card.querySelectorAll('button[data-act]').forEach(b => {
+        const a = b.dataset.act;
+        b.disabled = (state === 'online' && a === 'wake') ||
+                     (state === 'offline' && (a === 'reboot' || a === 'shutdown'));
+      });
+    }
+  });
+  S.lastOk = Date.now(); stamp(); paintHealth();
+}
+
+async function pollServices(){
+  const st = await apiFetch('/api/status').then(r => r.json());
+  Object.entries(st).forEach(([name, state]) => {
+    S.svcState[name] = state;
+    setChip($('#sdot-' + slug(name)), state);
+    const btn = $('#sopen-' + slug(name));
+    if (btn) {
+      const off = state !== 'online';
+      btn.setAttribute('aria-disabled', off ? 'true' : 'false');
+      btn.title = off ? 'Service is not responding — the link may still work' : '';
+    }
+  });
+  S.lastOk = Date.now(); stamp(); paintHealth();
+}
+
+async function pollContainers(){
+  if (!(S.cfg.proxmox && S.cfg.proxmox.enabled)) return;
+  try {
+    const d = await apiFetch('/api/proxmox/containers').then(r => r.json());
+    // Badge (was pollProxmox)
+    const ok = !!(d.success && d.containers);
+    setChip($('#pdot'), ok ? 'online' : 'offline');
+    const badge = $('#pbadge');
+    if (badge) {
+      if (ok) {
+        const n = d.containers.length;
+        const run = d.containers.filter(c => c.status === 'running').length;
+        badge.textContent = run + ' of ' + n + ' container' + (n === 1 ? '' : 's') + ' running';
+      } else {
+        badge.textContent = String(d.error || 'Not responding').replace(/^Proxmox /, '');
+      }
+    }
+    const open = $('#popen');
+    if (open) open.setAttribute('aria-disabled', ok ? 'false' : 'true');
+    // Table (was loadContainers)
+    renderContainers(d);
+  } catch(e) {
+    renderContainers({ success:false, error:'Network error' });
+  }
+}
+
+async function loadStacks(){
+  try { renderStacks(await apiFetch('/api/dockge/stacks').then(r => r.json())); }
+  catch(e) { renderStacks([]); }
+}
+
+async function refreshAll(){
+  const b = $('#refresh'); b.classList.add('spin');
+  await Promise.allSettled([pollHosts(), pollServices(), pollContainers(), loadStacks()]);
+  setTimeout(() => b.classList.remove('spin'), 400);
+}
+$('#refresh').addEventListener('click', refreshAll);
+document.addEventListener('visibilitychange', () => { if (!document.hidden && Date.now() - S.lastOk > 5000) refreshAll(); });
+
+/* ── Filter chips + sort (v7) ─────────────────────────────────────────── */
+document.addEventListener('click', e => {
+  const fh = e.target.closest('[data-fhost]');
+  if (fh) { svcHostFilter = svcHostFilter === fh.dataset.fhost ? '' : fh.dataset.fhost; renderServiceFilters(); return; }
+  const fs = e.target.closest('[data-fsrc]');
+  if (fs) { svcSourceFilter = svcSourceFilter === fs.dataset.fsrc ? '' : fs.dataset.fsrc; renderServiceFilters(); return; }
+  const ci = e.target.closest('[data-cinst]');
+  if (ci) { ctInstFilter = ctInstFilter === ci.dataset.cinst ? '' : ci.dataset.cinst; renderCtFilters(); return; }
+  const ct = e.target.closest('[data-ctag]');
+  if (ct) { ctTagFilter = ctTagFilter === ct.dataset.ctag ? '' : ct.dataset.ctag; renderCtFilters(); return; }
+});
+$('#svc-sort').addEventListener('change', () => renderServices(S.cfg.services || []));
+
+/* ── Settings (v7, admin) ──────────────────────────────────────────────── */
+let fullcfg = null;
+let instRows = [];           // [{id, host, node, enabled, token}]
+let scanSourceRows = [];     // [{type, host_id, name}]
+
+function instRowHtml(r, i){
+  const src = r.token && r.token.source;
+  const tokHint = r.token && r.token.set
+    ? (src === 'env' ? 'env var' : 'stored (' + src + ') — leave blank to keep')
+    : 'not set';
+  return '<div class="instrow" data-i="' + i + '">' +
+    '<input name="iid" value="' + esc(r.id || '') + '" placeholder="id" pattern="[A-Za-z0-9._-]{1,32}" required>' +
+    '<input name="ihost" value="' + esc(r.host || '') + '" placeholder="host" required>' +
+    '<input name="inode" value="' + esc(r.node || '') + '" placeholder="node">' +
+    '<input name="itok" type="password" value="" placeholder="token — ' + esc(tokHint) + '" autocomplete="new-password">' +
+    '<select name="ien"><option value="1"' + (r.enabled === false ? '' : ' selected') + '>on</option>' +
+    '<option value="0"' + (r.enabled === false ? ' selected' : '') + '>off</option></select>' +
+    '<button class="del" data-inst-del="' + i + '" title="Remove instance">✕</button></div>';
+}
+
+function renderInstList(){
+  $('#inst-list').innerHTML = instRows.length
+    ? '<p class="insthead">Instances</p>' + instRows.map(instRowHtml).join('')
+    : '<p class="hint">No Proxmox instances configured.</p>';
+}
+
+function renderScanSources(){
+  const known = { 'nginx-streams':'nginx streams (this Pi)', 'dockge-local':'dockge (this Pi)' };
+  const html = scanSourceRows.map((r, i) => {
+    const label = known[r.type] || r.type;
+    return '<div class="scanrow" data-si="' + i + '">' +
+      '<span class="srcc">' + esc(label) + '</span>' +
+      (r.type === 'dockge-ssh'
+        ? '<input type="text" value="' + esc(r.name || '') + '" placeholder="source name" data-sname="' + i + '">' +
+          '<input type="text" value="' + esc(r.host_id || '') + '" placeholder="host id from registry" data-shost="' + i + '">'
+        : '') +
+      '<button class="btn btn-sm btn-quiet" data-sdel="' + i + '">Remove</button></div>';
+  }).join('');
+  $('#scan-sources').innerHTML = html +
+    '<button class="btn btn-sm btn-quiet" id="src-add-ssh">+ dockge over SSH</button>';
+  const addSsh = $('#src-add-ssh');
+  if (addSsh) addSsh.addEventListener('click', () => {
+    scanSourceRows.push({ type:'dockge-ssh', name:'', host_id:'' });
+    renderScanSources();
+  });
+}
+
+async function loadSettings(){
+  try {
+    const d = await apiFetch('/api/config/full').then(r => r.json());
+    S.fullcfg = d;                       // v7 #1: openEdit() reads from here
+    fullcfg = d;
+    $('#set-title').value = d.title || '';
+    $('#set-dockge').checked = !!(d.dockge && d.dockge.enabled);
+    $('#set-autoadd').checked = !!(d.scan && d.scan.auto_add);
+    instRows = (d.proxmox_instances || []).map(p => ({
+      id: p.id || '', host: p.host || '', node: p.node || '',
+      enabled: p.enabled !== false, token: p.token || {},
+    }));
+    scanSourceRows = ((fullcfg.scan && fullcfg.scan.sources) || []).map(s => ({
+      type: s.type || '', host_id: s.host_id || '', name: s.name || '',
+    }));
+    renderInstList();
+    renderScanSources();
+    loadUpdateStatus();                  // v7.1: update card (admin-only view)
+    renderPlugins();                     // v8: plugins card
+    loadPluginSources();                 // v8: plugin store (repositories)
+  } catch(e) { toast('Failed to load settings', 'err'); }
+}
+
+/* ── Plugins (v8: store + installed) ────────────────────────────── */
+
+let plgSources = [];
+
+function renderPlugins(){
+  const el = $('#plugins-list');
+  if (!el) return;
+  if (window.USER && window.USER.role !== 'admin'){
+    el.innerHTML = '<p class="hint">Only admins can manage plugins.</p>';
+    return;
+  }
+  // Loaded plugins (from /api/plugins/list) + installed-but-disabled
+  // plugins (from the source scan cache) — both belong in the list.
+  Promise.all([
+    apiFetch('/api/plugins/list').then(r => r.json()).catch(() => ({})),
+    apiFetch('/api/config/plugins/sources').then(r => r.json()).catch(() => []),
+  ]).then(([plugins, sources]) => {
+    const installed = {};
+    Object.keys(plugins).forEach(n => installed[n] = { loaded: true, info: plugins[n] });
+    (sources || []).forEach(s => (s.plugins || []).forEach(p => {
+      if (p.installed && !installed[p.name]){
+        installed[p.name] = { loaded: false, info: p };
+      }
+    }));
+    const names = Object.keys(installed);
+    if (!names.length){
+      el.innerHTML = '<p class="hint">No plugins installed. Add a repository below and install one.</p>';
+      return;
+    }
+    el.innerHTML = names.map(name => {
+      const rec = installed[name];
+      const p = rec.info;
+      const statusClass = rec.loaded && p.status === 'loaded' ? 'online' : 'offline';
+      const stateTxt = rec.loaded
+        ? esc(p.status || '')
+        : 'installed · disabled';
+      const btn = rec.loaded
+        ? '<button class="btn btn-sm btn-quiet" data-plg="disable" data-name="' + esc(name) + '">Disable</button>'
+        : '<button class="btn btn-sm btn-primary" data-plg="enable" data-name="' + esc(name) + '">Enable</button>';
+      return '<div class="scanrow">' +
+        '<span class="dot ' + statusClass + '"></span>' +
+        '<strong>' + esc(name) + '</strong> ' +
+        '<span class="meta">v' + esc(p.version || '?') + '</span>' +
+        '<span class="srcc">' + stateTxt +
+          (rec.loaded && p.last_error ? ' — ' + esc(p.last_error) : '') + '</span>' +
+        '<span class="btn-row" style="margin:0">' + btn +
+        '<button class="btn btn-sm btn-bad" data-plg="uninstall" data-name="' + esc(name) + '">Uninstall</button>' +
+        '</span></div>';
+    }).join('');
+  }).catch(() => {
+    el.innerHTML = '<p class="hint">Failed to load plugins.</p>';
+  });
+}
+
+async function loadPluginSources(){
+  const el = $('#plugin-sources');
+  if (!el) return;
+  try {
+    plgSources = await apiFetch('/api/config/plugins/sources').then(r => r.json());
+  } catch(e) { plgSources = []; }
+  if (!plgSources.length){
+    el.innerHTML = '<p class="hint">No repositories added yet.</p>';
+    return;
+  }
+  el.innerHTML = plgSources.map(src => {
+    const when = src.last_scanned ? 'scanned ' + esc(String(src.last_scanned).replace('T',' ').replace('Z','')) : 'never scanned';
+    const pls = (src.plugins || []).map(p => {
+      const inst = p.installed;
+      const en = p.enabled;
+      const compat = p.core_compatible === false ? ' <span class="srcc" style="color:var(--bad)">core too old</span>' : '';
+      const btn = inst
+        ? '<span class="meta">installed v' + esc(p.version || '') + (en ? ' · enabled' : ' · disabled') + '</span>'
+        : '<button class="btn btn-sm btn-primary" data-plg="install" data-src="' + esc(src.id) + '"' +
+          ' data-name="' + esc(p.name) + '" data-ver="' + esc(p.version) + '">Install</button>';
+      return '<div class="scanrow">' +
+        '<strong>' + esc(p.name) + '</strong> ' +
+        '<span class="meta">v' + esc(p.version || '?') + '</span>' +
+        (p.description ? '<span class="srcc">' + esc(p.description) + '</span>' : '') +
+        compat + '<span class="btn-row" style="margin:0">' + btn + '</span></div>';
+    }).join('') || '<p class="hint">No plugin releases found — scan to check.</p>';
+    return '<div class="scanrow" style="flex-wrap:wrap">' +
+      '<strong>' + esc(src.owner + '/' + src.repo) + '</strong> ' +
+      '<span class="srcc">' + when + '</span>' +
+      '<span class="btn-row" style="margin:0">' +
+      '<button class="btn btn-sm btn-quiet" data-plg="scan" data-src="' + esc(src.id) + '">Scan</button>' +
+      '<button class="btn btn-sm btn-bad" data-plg="remove-src" data-src="' + esc(src.id) + '">Remove</button>' +
+      '</span></div>' + pls;
+  }).join('');
+}
+
+$('#plg-addform').addEventListener('submit', async e => {
+  e.preventDefault();
+  const url = $('#plg-addform input[name=plgurl]').value.trim();
+  try {
+    const d = await apiFetch('/api/config/plugins/sources', { method:'POST',
+      headers:{'Content-Type':'application/json'}, body: JSON.stringify({ url }) }).then(r => r.json());
+    if (!d.success){ toast(d.error || 'Failed to add repository', 'err'); return; }
+    toast(d.message || 'Repository added', 'ok');
+    $('#plg-addform input[name=plgurl]').value = '';
+    loadPluginSources();
+  } catch(e) { toast('Request failed', 'err'); }
+});
+
+$('#plugin-sources').addEventListener('click', e => {
+  const b = e.target.closest('button[data-plg]');
+  if (!b) return;
+  const src = b.dataset.src;
+  const act = b.dataset.plg;
+  if (act === 'scan'){
+    b.disabled = true; b.textContent = 'Scanning…';
+    apiFetch('/api/config/plugins/sources/' + encodeURIComponent(src) + '/scan', { method:'POST' })
+      .then(r => r.json())
+      .then(async d => {
+        if (d.error){ toast(d.error, 'err'); }
+        else { toast('Scan found ' + (d.plugins || []).length + ' plugin(s)', 'ok'); }
+        await loadPluginSources();
+      })
+      .catch(() => { toast('Scan failed', 'err'); b.disabled = false; b.textContent = 'Scan'; });
+    return;
+  }
+  if (act === 'remove-src'){
+    confirmAction('Remove repository', 'Remove ' + src + '? Every plugin installed from it is uninstalled.', async () => {
+      const d = await apiFetch('/api/config/plugins/sources/' + encodeURIComponent(src), { method:'DELETE' }).then(r => r.json()).catch(() => ({}));
+      toast(d.message || 'Repository removed', d.success === false ? 'err' : 'ok');
+      loadPluginSources(); renderPlugins();
+    });
+    return;
+  }
+  if (act === 'install'){
+    b.disabled = true; b.textContent = 'Installing…';
+    apiFetch('/api/config/plugins/install', { method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ source_id: src, name: b.dataset.name, version: b.dataset.ver }) })
+      .then(r => r.json())
+      .then(async d => {
+        toast(d.message || 'Installed', d.success === false ? 'err' : 'ok');
+        await loadPluginSources(); renderPlugins();
+      })
+      .catch(() => { toast('Install failed', 'err'); b.disabled = false; b.textContent = 'Install'; });
+    return;
+  }
+});
+
+$('#plugins-list').addEventListener('click', e => {
+  const b = e.target.closest('button[data-plg]');
+  if (!b) return;
+  const name = b.dataset.name;
+  if (b.dataset.plg === 'enable'){
+    b.disabled = true;
+    apiFetch('/api/config/plugins/' + encodeURIComponent(name) + '/enable', { method:'POST' })
+      .then(r => r.json())
+      .then(async d => { toast(d.message || 'Enabled', d.success === false ? 'err' : 'ok'); await loadPluginSources(); renderPlugins(); renderPluginTabs(); })
+      .catch(() => toast('Request failed', 'err'));
+    return;
+  }
+  if (b.dataset.plg === 'disable'){
+    b.disabled = true;
+    apiFetch('/api/config/plugins/' + encodeURIComponent(name) + '/disable', { method:'POST' })
+      .then(r => r.json())
+      .then(async d => { toast(d.message || 'Disabled', d.success === false ? 'err' : 'ok'); await loadPluginSources(); renderPlugins(); renderPluginTabs(); })
+      .catch(() => toast('Request failed', 'err'));
+    return;
+  }
+  if (b.dataset.plg === 'uninstall'){
+    confirmAction('Uninstall plugin', 'Uninstall ' + name + '? Its files are deleted from disk.', async () => {
+      const d = await apiFetch('/api/config/plugins/' + encodeURIComponent(name), { method:'DELETE' }).then(r => r.json()).catch(() => ({}));
+      toast(d.message || 'Uninstalled', d.success === false ? 'err' : 'ok');
+      loadPluginSources(); renderPlugins(); renderPluginTabs();
+    });
+    return;
+  }
+});
+
+/* ── Plugin tabs (v8: generic renderer for plugin TabUIDefs) ──────── */
+
+const plgTabTimers = {};
+const plgTabData = {};
+
+function pluginTabHtml(id, label, content){
+  return '<div class="view" data-view="' + id + '" hidden>' +
+    '<div class="viewhead"><h2>' + esc(label) + '</h2><span class="sub" id="sub-' + id + '"></span></div>' +
+    '<div id="content-' + id + '">' + content + '</div></div>';
+}
+
+async function renderPluginTabs(){
+  // Called on boot + whenever plugins change.  Adds sidebar entries and
+  // view sections for every loaded plugin that declares a TabUIDef.
+  try {
+    const plugins = await apiFetch('/api/plugins/list').then(r => r.json());
+    const tabs = [];
+    Object.entries(plugins).forEach(([name, p]) => {
+      (p.ui || []).forEach(u => {
+        if (u.type === 'TabUIDef' && u.id){
+          tabs.push({ name, tab: u });
+        }
+      });
+    });
+    // Remove stale plugin tabs (plugin disabled/uninstalled).
+    $$('#sidebar .nav-item[data-plg-tab]').forEach(n => {
+      const id = n.dataset.plgTab;
+      if (!tabs.some(t => t.tab.id === id)){
+        n.remove();
+        const v = $('.view[data-view="' + id + '"]');
+        if (v) v.remove();
+        if (plgTabTimers[id]){ clearInterval(plgTabTimers[id]); delete plgTabTimers[id]; }
+        if (S.view === id) showView('hosts');
+      }
+    });
+    tabs.forEach(({ name, tab }) => {
+      const id = tab.id;
+      if ($('#sidebar .nav-item[data-plg-tab="' + id + '"]')) return;  // already rendered
+      const btn = document.createElement('button');
+      btn.className = 'nav-item';
+      btn.dataset.plgTab = id;
+      btn.dataset.go = id;
+      btn.innerHTML = (tab.icon_svg || '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M4 17 10 11 14 15 20 9"/><path d="M4 21h16"/></svg>') +
+        '<span>' + esc(tab.label || name) + '</span>';
+      $('#sidebar').insertBefore(btn, $('#sidebar .navhint'));
+      const section = document.createElement('section');
+      section.innerHTML = pluginTabHtml(id, tab.label || name, '<p class="hint">Loading…</p>');
+      const view = section.firstChild;
+      $('#sidebar').parentElement.querySelector('main').appendChild(view);
+      // Poll the tab's endpoint (merged 10s loop per tab).
+      plgTabTimers[id] = setInterval(() => pollPluginTab(name, tab), 10000);
+      pollPluginTab(name, tab);
+    });
+  } catch(e) { /* plugins may not be reachable yet */ }
+}
+
+async function pollPluginTab(name, tab){
+  if (!tab.poll_endpoint || document.hidden) return;
+  const box = $('#content-' + tab.id);
+  if (!box) return;
+  try {
+    const d = await apiFetch(tab.poll_endpoint).then(r => r.json());
+    if (d.error){ box.innerHTML = '<p class="hint">' + esc(d.error) + '</p>'; return; }
+    plgTabData[tab.id] = d;
+    box.innerHTML = renderPluginTabData(name, tab, d);
+  } catch(e) { /* transient — keep last render */ }
+}
+
+function renderPluginTabData(name, tab, d){
+  // Generic renderer: list the top-level JSON fields as rows; arrays of
+  // dicts render as a table.  Plugin authors keep payloads simple.
+  let html = '';
+  const actions = (tab.actions || []).map(a =>
+    '<button class="btn btn-primary btn-sm" data-plgact="' + esc(a.id) + '" data-plgname="' + esc(name) + '">' + esc(a.label) + '</button>'
+  ).join('');
+  if (actions) html += '<div class="btn-row" style="margin-bottom:12px">' + actions + '</div>';
+  if (typeof d === 'object' && d !== null && !Array.isArray(d)){
+    const running = d.running;
+    if (running !== undefined){
+      html += '<div class="scanrow"><span class="dot ' + (running ? 'pending' : 'online') + '"></span>' +
+        '<strong>' + (running ? 'Running…' : 'Idle') + '</strong></div>';
+    }
+    const task = d.task;
+    if (task && task.message){
+      html += '<div class="scanrow"><strong>Task</strong><span class="srcc">' + esc(task.status) + ' — ' + esc(task.message) + '</span></div>';
+    }
+    Object.entries(d).forEach(([k, v]) => {
+      if (k === 'running' || k === 'task') return;
+      if (Array.isArray(v)){
+        if (!v.length){ html += '<div class="scanrow"><strong>' + esc(k) + '</strong><span class="srcc">none</span></div>'; return; }
+        if (typeof v[0] === 'object'){
+          const cols = Object.keys(v[0]);
+          html += '<div class="tablewrap"><div class="tscroll"><table><thead><tr>' +
+            cols.map(c => '<th>' + esc(c) + '</th>').join('') + '</tr></thead><tbody>' +
+            v.map(row => '<tr>' + cols.map(c =>
+              '<td>' + esc(Array.isArray(row[c]) ? row[c].join(', ') : (row[c] === false ? 'no' : (row[c] === true ? 'yes' : (row[c] ?? '')))).slice(0, 80) + '</td>'
+            ).join('') + '</tr>').join('') + '</tbody></table></div></div>';
+        } else {
+          html += '<div class="scanrow"><strong>' + esc(k) + '</strong><span class="srcc">' + esc(v.join(', ')) + '</span></div>';
+        }
+        return;
+      }
+      html += '<div class="scanrow"><strong>' + esc(k) + '</strong><span class="srcc">' + esc(String(v ?? '')) + '</span></div>';
+    });
+  }
+  return html || '<p class="hint">No data.</p>';
+}
+
+document.addEventListener('click', e => {
+  const b = e.target.closest('button[data-plgact]');
+  if (!b) return;
+  const name = b.dataset.plgname;
+  b.disabled = true;
+  apiFetch('/api/plugin/' + encodeURIComponent(name) + '/' + encodeURIComponent(b.dataset.plgact), { method:'POST' })
+    .then(r => r.json())
+    .then(d => {
+      b.disabled = false;
+      if (d.error){ toast(d.error, 'err'); return; }
+      toast(d.message || 'Started', 'ok');
+      // Find the tab by plugin name + repoll so the new state shows.
+      apiFetch('/api/plugins/list').then(r => r.json()).then(plugins => {
+        const p = plugins[name];
+        if (!p) return;
+        (p.ui || []).forEach(u => { if (u.type === 'TabUIDef' && u.id) pollPluginTab(name, u); });
+      }).catch(() => {});
+    })
+    .catch(() => { b.disabled = false; toast('Request failed', 'err'); });
+});
+
+/* ── Update system (v7.1, admin) ─────────────────────────────────── */
+let updLatest = null;
+
+function renderChangelog(md){
+  if (!md) return '';
+  // esc() FIRST — the release body is GitHub-controlled text; only the
+  // heading/bullet transforms are applied to the escaped string.
+  const s = esc(String(md).slice(0, 4096));
+  return s.split('\n').map(l => {
+    const t = l.trim();
+    if (/^#{1,4}\s+/.test(t)) return '<b>' + t.replace(/^#{1,4}\s+/, '') + '</b>';
+    if (/^[-*]\s+/.test(t)) return '• ' + t.replace(/^[-*]\s+/, '');
+    return l;
+  }).join('\n');
+}
+
+function renderUpdate(d){
+  const el = $('#update-status');
+  if (!el) return;
+  updLatest = d.latest_version || null;
+  const when = (ts) => ts ? esc(String(ts).replace('T',' ').replace('Z',' UTC')) : '';
+  let html = '<div class="upd-meta">Current <code>' + esc(d.current_version || '?') + '</code>' +
+             ' · Latest <code>' + esc(d.latest_version || '—') + '</code>' +
+             (d.checked_at ? ' · checked ' + when(d.checked_at) : '') + '</div>';
+  if (d.last_error) html += '<p class="hint">Check failed: ' + esc(d.last_error) + '</p>';
+  if (d.busy){
+    html += '<div class="upd-banner"><h3>Updating…</h3>' +
+            '<p class="upd-rel">Installing ' + esc(updLatest || '') + ' — the service restarts and the page reloads automatically.</p></div>';
+  } else if (d.update_available){
+    html += '<div class="upd-banner"><h3>Update available: ' + esc(d.latest_version) + '</h3>' +
+            (d.published_at ? '<p class="upd-rel">released ' + when(d.published_at) + '</p>' : '') +
+            '<div class="upd-changelog">' + renderChangelog(d.changelog) + '</div>' +
+            '<button class="btn btn-bad-solid" data-upd="apply">Update now</button></div>';
+  }
+  html += '<button class="btn btn-sm btn-quiet" data-upd="check" id="upd-check">Check now</button>';
+  el.innerHTML = html;
+}
+
+async function loadUpdateStatus(){
+  try {
+    const d = await apiFetch('/api/update/status').then(r => r.json());
+    if (d.error){ $('#update-status').innerHTML = '<p class="hint">' + esc(d.error) + '</p>'; return; }
+    if (!d.checked_at){
+      const f = await apiFetch('/api/update/check', {method:'POST'}).then(r => r.json());
+      renderUpdate(f);
+      return;
+    }
+    renderUpdate(d);
+  } catch(e) { /* settings view may be closed by then */ }
+}
+
+async function checkUpdate(){
+  const btn = $('#upd-check');
+  if (btn) btn.disabled = true;
+  try {
+    const d = await apiFetch('/api/update/check', {method:'POST'}).then(r => r.json());
+    renderUpdate(d);
+  } catch(e) { toast('Update check failed', 'err'); }
+  if (btn) btn.disabled = false;
+}
+
+function applyUpdate(){
+  const tag = updLatest;
+  if (!tag){ toast('No release to install', 'err'); return; }
+  confirmAction('Update Pi Hub',
+    'Install ' + tag + ' and restart the service? The dashboard is unavailable for a few seconds while the new version boots.',
+    async () => {
+      try {
+        const d = await apiFetch('/api/update/apply', {
+          method:'POST', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({expected_tag: tag}),
+        }).then(r => r.json());
+        if (!d.success){ toast(d.error || 'Update failed', 'err'); loadUpdateStatus(); return; }
+        document.querySelectorAll('#update-card [data-upd]').forEach(b => b.disabled = true);
+        const st = $('#update-status');
+        if (st) st.innerHTML = '<div class="upd-banner"><h3>Updating…</h3>' +
+          '<p class="upd-rel">Installing ' + esc(tag) + ' — the service restarts and the page reloads automatically.</p></div>';
+        toast('Update started — service restarting', 'ok');
+        await pollUpdateUntil(tag);
+      } catch(e) { toast('Update request failed', 'err'); }
+    });
+}
+
+async function pollUpdateUntil(tag){
+  // Reload only when the NEW code is serving (current_version == tag).
+  // Health polling alone would reload against the old process.
+  const want = String(tag).replace(/^v/, '');
+  for (let i = 0; i < 30; i++){
+    await new Promise(res => setTimeout(res, 3000));
+    try {
+      const d = await apiFetch('/api/update/status').then(r => r.json());
+      if (d.current_version === want){ location.reload(); return; }
+    } catch(e) { /* server down mid-restart — keep waiting */ }
+  }
+  toast('The service did not come back — reload manually or check the Pi', 'err');
+}
+
+$('#update-card').addEventListener('click', e => {
+  const b = e.target.closest('[data-upd]');
+  if (!b) return;
+  if (b.dataset.upd === 'check') checkUpdate();
+  if (b.dataset.upd === 'apply') applyUpdate();
+});
+
+function collectInstRows(){
+  return $$('#inst-list .instrow').map((row, i) => {
+    const q = sel => (row.querySelector(sel) || {}).value || '';
+    const en = (row.querySelector('select[name=ien]') || {}).value;
+    return {
+      id: q('input[name=iid]').trim(), host: q('input[name=ihost]').trim(),
+      node: q('input[name=inode]').trim() || q('input[name=iid]').trim(),
+      enabled: en !== '0', token: q('input[name=itok]'),
+    };
+  });
+}
+
+$('#inst-add').addEventListener('click', () => {
+  instRows.push({ id:'', host:'', node:'', enabled:true, token:{} });
+  renderInstList();
+});
+$('#inst-list').addEventListener('click', e => {
+  const del = e.target.closest('[data-inst-del]');
+  if (del) {
+    const row = del.closest('.instrow');
+    const id = row.querySelector('input[name=iid]')?.value || '#' + (del.dataset.instDel - 1 + 1);
+    confirmAction('Remove Proxmox instance',
+      `Remove instance "${id}"? Its tokens and all user container caps for this instance are cleared.`,
+      () => { instRows.splice(+del.dataset.instDel, 1); renderInstList(); });
+  }
+});
+$('#scan-sources').addEventListener('click', e => {
+  const del = e.target.closest('[data-sdel]');
+  if (del) { scanSourceRows.splice(+del.dataset.sdel, 1); renderScanSources(); }
+});
+$('#scan-sources').addEventListener('input', e => {
+  const t = e.target;
+  if (t.dataset.sname != null) scanSourceRows[+t.dataset.sname].name = t.value;
+  if (t.dataset.shost != null) scanSourceRows[+t.dataset.shost].host_id = t.value;
+});
+
+$('#set-save').addEventListener('click', async () => {
+  const rows = collectInstRows();
+  if (rows.some(r => !r.id || !r.host)) { toast('Every instance needs an id and host', 'err'); return; }
+  const instances = rows.map(r => ({ id:r.id, host:r.host, node:r.node, enabled:r.enabled }));
+  const tokens = {};
+  rows.forEach(r => { if (r.token) tokens[r.id] = r.token; });
+  const status = $('#set-status'); status.textContent = 'Saving…';
+  try {
+    const r1 = await apiFetch('/api/config/proxmox', { method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ instances, tokens }) }).then(r => r.json());
+    if (!r1.success) { status.textContent = ''; toast(r1.error || 'Failed to save Proxmox settings', 'err'); return; }
+    const srcs = scanSourceRows.map(s => s.type === 'dockge-ssh'
+      ? { type:s.type, name:s.name, host_id:s.host_id } : { type:s.type });
+    const r2 = await apiFetch('/api/config/meta', { method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({
+        title: $('#set-title').value.trim(),
+        dockge: { enabled: $('#set-dockge').checked },
+        scan: { auto_add: $('#set-autoadd').checked, sources: srcs },
+      }) }).then(r => r.json());
+    if (!r2.success) { status.textContent = ''; toast(r2.error || 'Failed to save settings', 'err'); return; }
+    status.textContent = '';
+    toast(r1.warning || 'Settings saved', 'ok');
+    await refreshConfig();
+    await loadSettings();
+  } catch(e) { status.textContent = ''; toast('Request failed', 'err'); }
+});
+
+/* ── Scan (v7, admin) ─────────────────────────────────────────────────── */
+let scanCands = [];
+
+async function runScan(){
+  $('#scan-results').hidden = false;
+  $('#scan-results').innerHTML = '<div class="scanwrap"><span class="spinner"></span> Scanning…</div>';
+  try {
+    const d = await apiFetch('/api/config/scan', { method:'POST' }).then(r => r.json());
+    scanCands = d.candidates || [];
+    paintScanResults();
+  } catch(e) { $('#scan-results').innerHTML = '<div class="scanwrap">Scan failed.</div>'; }
+}
+
+function paintScanResults(){
+  const box = $('#scan-results');
+  const dockge = scanCands.filter(c => c.source === 'dockge');
+  const nginx = scanCands.filter(c => c.source === 'nginx');
+  if (!scanCands.length) {
+    box.innerHTML = '<div class="scanwrap"><p class="hint">Scan found nothing new.</p>' +
+      '<button class="btn btn-sm btn-quiet" data-act="scan-close">Close</button></div>';
+    return;
+  }
+  let html = '<div class="scanwrap"><p class="hint">' + scanCands.length +
+    ' candidate service(s) found — confirm the ones to add. nginx stream candidates need a name.</p>';
+  if (dockge.length) {
+    html += '<p class="insthead">Dockge</p>' + dockge.map((c, i) =>
+      '<div class="scanrow"><input type="checkbox" data-sel="' + i + '" checked>' +
+      '<b>' + esc(c.name || c.port) + '</b> <span class="meta">:' + c.port + ' on ' + esc(c.host || '') + '</span>' +
+      '<span class="srcc">' + esc(c.source) + '</span></div>').join('');
+  }
+  if (nginx.length) {
+    html += '<p class="insthead">Nginx streams (name required)</p>' + nginx.map((c, i) =>
+      '<div class="scanrow"><input type="checkbox" data-sel="' + i + '">' +
+      '<input type="text" placeholder="name for port ' + c.port + '" data-sname="' + i + '">' +
+      '<span class="meta">' + esc(c.target || '') + '</span><span class="srcc">' + esc(c.source) + '</span></div>').join('');
+  }
+  html += '<div class="btn-row" style="margin-top:10px">' +
+    '<button class="btn btn-primary btn-sm" data-act="scan-apply">Add selected</button>' +
+    '<button class="btn btn-quiet btn-sm" data-act="scan-close">Close</button></div></div>';
+  box.innerHTML = html;
+}
+
+$('#scan-results').addEventListener('input', e => {
+  const t = e.target;
+  if (t.dataset.sname != null) scanCands[+t.dataset.sname].name = t.value;
+});
+document.addEventListener('click', e => {
+  const b = e.target.closest('button[data-act]');
+  if (!b) return;
+  if (b.dataset.act === 'scan-close') { $('#scan-results').hidden = true; $('#scan-results').innerHTML = ''; return; }
+  if (b.dataset.act === 'scan-apply') {
+    const selected = [];
+    $$('#scan-results .scanrow input[type=checkbox]:checked').forEach(cb => {
+      const c = scanCands[+cb.dataset.sel];
+      if (!c) return;
+      if (c.source === 'nginx' && !(c.name || '').trim()) return;   // unnamed nginx → skip
+      selected.push(c);
+    });
+    if (!selected.length) { toast('Nothing to add — name the nginx streams first', 'err'); return; }
+    apiFetch('/api/config/scan/apply', { method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ candidates: selected }) })
+      .then(r => r.json())
+      .then(async d => {
+        toast(d.message || 'Added', d.success === false ? 'err' : 'ok');
+        $('#scan-results').hidden = true; $('#scan-results').innerHTML = '';
+        await refreshConfig();
+      })
+      .catch(() => toast('Request failed', 'err'));
+    return;
+  }
+});
+$('#scan-btn').addEventListener('click', runScan);
+
+/* ── Boot ──────────────────────────────────────────────────────────────── */
+function skeletons(sel, n){
+  $(sel).innerHTML = Array.from({length:n}, () => '<div class="skel"></div>').join('');
+}
+
+(async function init(){
+  /* ── v6/v7 auth gate: who am I? (explicit status check — #19) ─────── */
+  try {
+    const t = localStorage.getItem(TOKEN_KEY);
+    const r = await fetch('/api/auth/me', { headers: t ? { Authorization: 'Bearer ' + t } : {} });
+    if (r.status === 503) {
+      // #9: only a no-users 503 is the first-run setup; a corrupt-config
+      // 503 must NOT show the bootstrap form (it would fail anyway).
+      const d = await r.json().catch(() => ({}));
+      if (/bootstrap/i.test(d.error || '')) { showSetup(); return; }
+      const body = document.querySelector('.login, #setup, .shell') || document.body;
+      const wrap = document.createElement('div');
+      wrap.className = 'login';
+      wrap.innerHTML = '<div class="logincard"><span class="brand"><h1>Pi Hub</h1></span>' +
+        '<p class="login-sub">Server error</p><p class="login-err">' +
+        esc(d.error || 'Configuration error') + '</p></div>';
+      body.replaceWith ? body.replaceWith(wrap) : (document.body.innerHTML = '', document.body.appendChild(wrap));
+      return;
+    }
+    if (r.status === 401) { gateLogin(); return; }        // bad/expired token
+    window.USER = await r.json();
+  } catch(e) { gateLogin(); return; }                     // network error → login screen
+  $('#userbadge').innerHTML = '<b>' + esc(window.USER.username) + '</b> · ' + esc(window.USER.role);
+  $('#logout').hidden = false;
+  if (window.USER.role === 'admin') {
+    $('#users-nav').hidden = false; $('#settings-nav').hidden = false;
+    $('#add').hidden = false; $('#scan-btn').hidden = false;
+  }
+
+  // Periodically refresh the user's caps from /api/auth/me so button
+  // visibility stays correct when an admin changes caps while logged in.
+  setInterval(async () => {
+    try {
+      const t = localStorage.getItem(TOKEN_KEY);
+      const r = await fetch('/api/auth/me', { headers: t ? { Authorization: 'Bearer ' + t } : {} });
+      if (r.status === 200) {
+        const u = await r.json();
+        if (JSON.stringify(u.caps) !== JSON.stringify(window.USER.caps) ||
+            u.role !== window.USER.role) {
+          window.USER = { username: window.USER.username, role: u.role, caps: u.caps };
+          renderHosts(S.cfg.hosts || []);
+          renderServices(S.cfg.services || []);
+        }
+      }
+    } catch(e) {}
+  }, 30000);
+
+  skeletons('#hosts', 3); skeletons('#services', 4);
+  $('#ct-body').innerHTML = '<tr><td colspan="7"><div class="empty">Loading containers…</div></td></tr>';
+
+  try {
+    [S.cfg, S.icons] = await Promise.all([
+      apiFetch('/api/config').then(r => r.json()),
+      apiFetch('/api/icons').then(r => r.json())
+    ]);
+  } catch(e) {
+    toast('Could not load config — is the backend running?', 'err');
+    return;
+  }
+
+  if (S.cfg.title) { document.title = S.cfg.title; $('h1').textContent = S.cfg.title; }
+  if (S.cfg.proxmox) $('#ct-title').textContent = 'Proxmox containers · ' + (S.cfg.proxmox.host || 'proxmox');
+
+  // Start polls before rendering — network calls overlap with DOM work
+  loop('hosts',      pollHosts,       5000);
+  loop('services',   pollServices,   10000);
+  loop('containers', pollContainers, 10000);
+  loop('stacks',     loadStacks,     30000);
+
+  renderHosts(S.cfg.hosts || []);
+  renderServices(S.cfg.services || []);
+  if (S.cfg.proxmox && S.cfg.proxmox.enabled) renderProxmoxCard(S.cfg.proxmox);
+  showView('hosts');
+  renderPluginTabs();                  // v8: plugin-contributed sidebar tabs
+
+  // v7: auto-add toggle — surface scan results (dockge auto-addable) on load
+  if (window.USER.role === 'admin' && S.cfg.scan && S.cfg.scan.auto_add) runScan();
+})();
+</script>
+</body>
+</html>

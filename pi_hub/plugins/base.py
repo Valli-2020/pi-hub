@@ -1,0 +1,463 @@
+"""Plugin base types — ABC, PluginContext, and declarative descriptors.
+
+This module defines the contract every Pi Hub plugin implements and the
+through-which-all-system-access-happens context that enforces the plugin
+capability boundary.
+
+Security
+--------
+PluginContext is the ONLY way plugins touch the rest of the system.  It
+never hands back raw module references (no ``pi_hub.config`` import), no
+file paths outside the plugin's own directory, and no tokens.  Every
+action is checked against the plugin's declared capabilities at call
+time (not just at load time), mirroring the per-request ``can_act()``
+guard in :mod:`pi_hub.auth`.
+"""
+
+from __future__ import annotations
+
+import abc
+import json
+import os
+import re
+import threading
+import time
+from typing import Any, Callable, Dict, List, Optional
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Declarative descriptors (for get_routes / get_tasks / get_ui)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+class RouteDef:
+    """One HTTP route exposed by a plugin.
+
+    ``caps`` is the list of user capabilities (from
+    :data:`pi_hub.auth.CAP_ACTIONS` plus plugin-specific ones) required to
+    call the route.  ``[]`` means any authenticated user; ``["admin"]``
+    means admin-only (same semantics as :func:`pi_hub.auth.classify`).
+    """
+
+    __slots__ = ("method", "path", "handler", "caps")
+
+    def __init__(
+        self,
+        method: str,
+        path: str,
+        handler: Callable[..., Any],
+        caps: list[str] | None = None,
+    ):
+        self.method = method.upper()
+        self.path = path
+        self.handler = handler
+        self.caps = caps or []
+
+
+class TaskDef:
+    """One background task exposed by a plugin.
+
+    The task function is launched in a daemon thread via
+    :meth:`PluginContext.run_task`.  Task names are namespaced
+    ``plugin:<plugin_name>:<name>`` automatically — plugins never
+    collide with core tasks (``boot_windows`` etc.).
+    """
+
+    __slots__ = ("name", "fn")
+
+    def __init__(self, name: str, fn: Callable[[], None]):
+        self.name = name
+        self.fn = fn
+
+
+class TabUIDef:
+    """A sidebar tab contributed by a plugin.
+
+    The frontend's generic plugin renderer calls ``poll_endpoint`` every
+    10 s and renders the JSON it returns into the tab's content area
+    (the same merged-poll pattern the existing UI uses).
+    """
+
+    __slots__ = (
+        "id",
+        "label",
+        "icon_svg",
+        "position",
+        "poll_endpoint",
+        "actions",
+    )
+
+    def __init__(
+        self,
+        id: str,
+        label: str,
+        icon_svg: str,
+        position: int = 99,
+        poll_endpoint: str = "",
+        actions: list["ActionDef"] | None = None,
+    ):
+        self.id = id
+        self.label = label
+        self.icon_svg = icon_svg
+        self.position = position
+        self.poll_endpoint = poll_endpoint
+        self.actions = actions or []
+
+
+class CardUIDef:
+    """A card contributed to the Settings page (admin-only surface)."""
+
+    __slots__ = ("title", "content_template")
+
+    def __init__(self, title: str, content_template: str = ""):
+        self.title = title
+        self.content_template = content_template
+
+
+class ActionDef:
+    """A button on a plugin tab.
+
+    ``caps`` works like :class:`RouteDef` — admin-only if ``["admin"]``,
+    any-authed if ``[]``.
+    """
+
+    __slots__ = ("id", "label", "style", "caps")
+
+    def __init__(
+        self,
+        id: str,
+        label: str,
+        style: str = "secondary",
+        caps: list[str] | None = None,
+    ):
+        self.id = id
+        self.label = label
+        self.style = style
+        self.caps = caps or []
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Plugin ABC
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+class Plugin(abc.ABC):
+    """Every plugin subclasses this.  Declarative — return routes/tasks/UI
+    from the respective ``get_*`` methods; the framework wires them.
+    """
+
+    #: Unique id (must match the directory name under ``pi_hub_plugins/``).
+    name: str = ""
+    #: Semver string, e.g. ``"0.1.0"``.
+    version: str = "0.1.0"
+    #: Short human-readable description.
+    description: str = ""
+    #: Minimum Pi Hub core version required (semver, e.g. ``"7.1.0"``).
+    min_core_version: str = "7.1.0"
+    #: Capability needs — list of strings, e.g. ``["proxmox.read", "ssh.execute"]``.
+    capabilities: list[str] = []
+
+    def load(self, ctx: "PluginContext") -> None:
+        """Called once when the plugin is loaded.  Set up state here."""
+        raise NotImplementedError
+
+    def unload(self) -> None:
+        """Called when the plugin is disabled.  Cancel background work."""
+        pass
+
+    def get_routes(self) -> list[RouteDef]:
+        """Return the plugin's HTTP routes."""
+        return []
+
+    def get_tasks(self) -> list[TaskDef]:
+        """Return the plugin's background tasks."""
+        return []
+
+    def get_ui(self) -> list[Any]:
+        """Return TabUIDef / CardUIDef / ActionDef descriptors."""
+        return []
+
+    # ── Optional event hooks ────────────────────────────────────────────────
+
+    def on_host_state_change(self, host_id: str, new_state: str) -> None:
+        """Called by the core poller when a host's online/offline state
+        changes.  Optional — override to react."""
+        pass
+
+    def on_scan_complete(self, results: dict) -> None:
+        """Called by the service scanner when a scan completes.  Optional."""
+        pass
+
+    def migrate_config(self, old_version: str, config: dict) -> dict:
+        """Migrate a stored config dict from ``old_version`` to the
+        plugin's current version.  Return the updated dict."""
+        return config
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# PluginContext — the security boundary
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+class PluginLoadError(Exception):
+    """Raised when a plugin fails to load (capability missing, invalid
+    manifest, init error)."""
+
+
+class _PluginThread(threading.Thread):
+    """Thread that can be cancelled via its ``_cancel`` event."""
+
+    def __init__(self, target: Callable[[], None], **kw):
+        self._cancel = threading.Event()
+        # wrap target so it can check _cancel periodically
+        fn = target
+
+        def _wrap():
+            # pass cancel handle via thread-local so plugin code can check it
+            _PLUGIN_THREAD_CANCEL.cancel = self._cancel
+            try:
+                fn()
+            finally:
+                _PLUGIN_THREAD_CANCEL.cancel = None
+
+        super().__init__(target=_wrap, daemon=True, **kw)
+
+
+_PLUGIN_THREAD_CANCEL = threading.local()
+
+
+def thread_cancel() -> threading.Event | None:
+    """Return the cancel event for the current plugin thread, or None."""
+    return getattr(_PLUGIN_THREAD_CANCEL, "cancel", None)
+
+
+class PluginContext:
+    """The ONLY way a plugin touches the Pi Hub system.  Every method
+    checks capabilities at call time (not just load time).
+
+    Instances are constructed by :class:`PluginManager` and are NOT
+    shareable across plugins — each plugin gets its own.
+    """
+
+    def __init__(
+        self,
+        plugin: Plugin,
+        plugin_dir: str,
+        capabilities: list[str],
+    ):
+        self._plugin = plugin
+        self._plugin_dir = os.path.realpath(plugin_dir)
+        self._caps = set(capabilities)
+        self._config: dict = {}
+        self._threads: list[_PluginThread] = []
+        self._config_path = os.path.join(plugin_dir, "config.json")
+        self._load_config()
+
+    # ── Internal helpers ───────────────────────────────────────────────────
+
+    def _load_config(self) -> None:
+        try:
+            with open(self._config_path) as f:
+                self._config = json.load(f)
+        except (OSError, ValueError):
+            self._config = {}
+
+    def _save_config(self) -> None:
+        from pi_hub.config import _config_edit_lock  # local: avoid cycle
+        with _config_edit_lock:
+            tmp = self._config_path + ".tmp"
+            with open(tmp, "w") as f:
+                f.write(json.dumps(self._config, indent=2))
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(tmp, self._config_path)
+
+    def _require_cap(self, cap: str) -> None:
+        if cap not in self._caps:
+            raise PermissionError(
+                f"Plugin '{self._plugin.name}' lacks capability '{cap}'"
+            )
+
+    # ── Config (per-plugin, namespaced) ────────────────────────────────────
+
+    def get_config(self) -> dict:
+        """Return this plugin's config dict (mutable reference — save with
+        :meth:`save_config` after editing)."""
+        return self._config
+
+    def save_config(self) -> None:
+        """Atomically persist the plugin's config to ``config.json``."""
+        self._save_config()
+
+    # ── System reads (capability-gated) ────────────────────────────────────
+
+    def get_hosts(self) -> list[dict]:
+        """Return all configured hosts (needs ``hosts.read``)."""
+        self._require_cap("hosts.read")
+        from pi_hub.config import get_hosts
+        return get_hosts()
+
+    def get_proxmox_containers(self, instance_id: str = "") -> dict:
+        """Return Proxmox container list (needs ``proxmox.read``)."""
+        self._require_cap("proxmox.read")
+        from pi_hub import proxmox
+        return proxmox.fetch_proxmox_containers(instance_id)
+
+    def get_proxmox_instances(self) -> list[dict]:
+        """Return the configured Proxmox instances (needs ``proxmox.read``).
+
+        Each entry: ``{id, host, node, ssh_user, enabled}``.  No tokens,
+        no api_url — just what a plugin needs to address the hosts.
+        """
+        self._require_cap("proxmox.read")
+        from pi_hub.config import proxmox_instances
+        return [
+            {
+                "id": str(p.get("id", "")),
+                "host": str(p.get("host", "")),
+                "node": str(p.get("node", "")),
+                "ssh_user": str(p.get("ssh_user", "") or "root"),
+                "enabled": bool(p.get("enabled", bool(p.get("host")))),
+            }
+            for p in proxmox_instances()
+            if p.get("host")
+        ]
+
+    def ssh_cmd(self, host_id: str, command: str, timeout: int = 1800) -> dict:
+        """Run a command via SSH on a *registry host* (needs ``ssh.execute``).
+
+        ``command`` must start with an allowlisted prefix — currently
+        ``pct exec`` (Proxmox container management).  This is the
+        capability boundary for plugins that manage containers (e.g. an
+        update-all plugin): raw shell access is never granted.
+
+        ``timeout`` is the SSH timeout in seconds.  The default is long
+        (30 min) because ``pct exec`` commands such as ``apt-get upgrade``
+        routinely run far past the core's short default — a short timeout
+        would kill the remote command mid-transaction and leave the
+        container in an inconsistent state.
+
+        Returns ``{"ok": bool, "output": str, "code": int}``.  On a
+        non-zero remote exit, ``output`` contains the captured stderr/stdout
+        so callers can surface the real failure reason (rather than a
+        generic "ssh failed").
+        """
+        self._require_cap("ssh.execute")
+        from pi_hub.config import find_host_by_id
+        from pi_hub.hosts import ssh_result
+        host = find_host_by_id(host_id)
+        if not host:
+            return {"ok": False, "output": "unknown host", "code": 1}
+        cmd = str(command or "").strip()
+        if not cmd.startswith("pct exec "):
+            return {"ok": False,
+                    "output": "command not allowed (only 'pct exec ...')",
+                    "code": 1}
+        res = ssh_result(host, cmd, timeout=timeout)
+        if res["returncode"] is None:
+            return {"ok": False, "output": res["stderr"] or "ssh failed",
+                    "code": 1}
+        output = res["stdout"] or res["stderr"]
+        return {"ok": res["ok"], "output": output, "code": res["returncode"]}
+
+    def get_services(self) -> list[dict]:
+        """Return configured services (needs ``services.read``)."""
+        self._require_cap("services.read")
+        from pi_hub.config import get_config
+        return get_config().get("services", [])
+
+    def get_dockge_stacks(self) -> list[dict]:
+        """Return Dockge stacks (needs ``dockge.read``)."""
+        self._require_cap("dockge.read")
+        from pi_hub import dockge
+        return dockge.list_stacks()
+
+    # ── System actions (capability-gated) ──────────────────────────────────
+
+    def ssh_action(self, host_id: str, action: str) -> bool:
+        """Run a power action via SSH (needs ``ssh.execute``).  ``action``
+        is validated against the same allowlist the core UI uses — no raw
+        command injection."""
+        self._require_cap("ssh.execute")
+        from pi_hub.config import find_host_by_id
+        from pi_hub.hosts import ssh_action
+        host = find_host_by_id(host_id)
+        if not host:
+            return False
+        return ssh_action(host, action)
+
+    def wake_host(self, host_id: str) -> bool:
+        """Send a WOL magic packet (needs ``hosts.wake``)."""
+        self._require_cap("hosts.wake")
+        from pi_hub.config import find_host_by_id
+        from pi_hub.net import send_wol
+        host = find_host_by_id(host_id)
+        if not host:
+            return False
+        return bool(send_wol(host.get("mac", ""), host.get("ip", "")))
+
+    def proxmox_action(self, instance_id: str, vmid: str, action: str) -> dict:
+        """Start/stop/reboot/shutdown a container (needs ``proxmox.control``)."""
+        self._require_cap("proxmox.control")
+        from pi_hub import proxmox
+        return proxmox.pve_action(vmid, action, instance_id)
+
+    # ── Background tasks ───────────────────────────────────────────────────
+
+    def run_task(self, name: str, fn: Callable[[], None]) -> None:
+        """Launch a background task in a daemon thread.  The thread is
+        tracked so :meth:`Plugin.unload` can cancel it.  Task name is
+        namespaced to this plugin."""
+        full_name = f"plugin:{self._plugin.name}:{name}"
+        t = _PluginThread(target=fn, name=full_name)
+        self._threads.append(t)
+        t.start()
+
+    def set_task_status(self, name: str, status: str, message: str = "") -> None:
+        """Update the status of a running task (polled via
+        ``GET /api/task/plugin:<name>:<task>``)."""
+        from pi_hub import tasks
+        full_name = f"plugin:{self._plugin.name}:{name}"
+        tasks.set_task_status(full_name, status, message)
+
+    def get_task_status(self, name: str) -> Optional[dict]:
+        """Return the last status of a task."""
+        from pi_hub import tasks
+        full_name = f"plugin:{self._plugin.name}:{name}"
+        return tasks.get_task_status(full_name)
+
+    # ── UI / notifications ────────────────────────────────────────────────
+
+    def toast(self, message: str, kind: str = "info") -> None:
+        """Push a toast to all connected UIs (stored in the global
+        ``_PLUGINS_TOASTS`` buffer polled by the frontend)."""
+        from pi_hub.plugins.manager import push_toast
+        push_toast(self._plugin.name, message, kind)
+
+    def register_static(self, url_path: str, file_path: str) -> None:
+        """Register a static file served at ``/plugin-static/<name>/...``.
+
+        ``file_path`` must live inside the plugin's ``static/`` directory
+        — path traversal is rejected."""
+        from pi_hub.plugins.manager import register_plugin_static
+        # Defer resolution to serve time so plugin_dir is known
+        register_plugin_static(self._plugin.name, url_path, file_path, self._plugin_dir)
+
+    def request_restart(self, tag: str) -> None:
+        """Signal the core server to restart (e.g. after applying an
+        update).  The actual restart is handled by the core's
+        ``server.py`` which calls ``os._exit(0)`` — plugins can't do that
+        directly without killing other plugins."""
+        from pi_hub.plugins.manager import request_core_restart
+        request_core_restart(tag)
+
+    # ── Lifecycle ──────────────────────────────────────────────────────────
+
+    def unload(self) -> None:
+        """Signal all plugin threads to stop and wait briefly."""
+        for t in self._threads:
+            if hasattr(t, "_cancel"):
+                t._cancel.set()
+        for t in self._threads:
+            t.join(timeout=3.0)
+        self._threads.clear()
+        self._plugin.unload()

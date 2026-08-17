@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- hub: central circle -->
+  <circle cx="16" cy="15" r="5" fill="oklch(72% 0.13 65)"/>
+  <!-- spokes to services -->
+  <line x1="16" y1="10" x2="16" y2="3" stroke="oklch(72% 0.13 65)" stroke-width="1.5" stroke-linecap="round"/>
+  <line x1="21" y1="19" x2="27" y2="24" stroke="oklch(72% 0.13 65)" stroke-width="1.5" stroke-linecap="round"/>
+  <line x1="11" y1="19" x2="5"  y2="24" stroke="oklch(72% 0.13 65)" stroke-width="1.5" stroke-linecap="round"/>
+  <!-- service nodes -->
+  <circle cx="16" cy="3" r="2.2" fill="none" stroke="oklch(72% 0.13 65)" stroke-width="1.5"/>
+  <circle cx="27" cy="24" r="2.2" fill="none" stroke="oklch(72% 0.13 65)" stroke-width="1.5"/>
+  <circle cx="5"  cy="24" r="2.2" fill="none" stroke="oklch(72% 0.13 65)" stroke-width="1.5"/>
+</svg>
