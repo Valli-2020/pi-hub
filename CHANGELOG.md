@@ -3,6 +3,18 @@
 All notable changes to Pi Hub are documented here. Every release ships a
 changelog entry AND matching GitHub release notes.
 
+## [7.5.6] - 2026-08-17
+
+### Fixed
+
+- **Plugin store scan found no plugins** — the redirect handling added
+  in 7.5.2 raised `HTTPError` on the first 302 (asset download to
+  `release-assets.githubusercontent.com`) instead of following it: the
+  `_NoRedirect` opener throws on 3xx, and the manual redirect loop only
+  caught redirects from a *returned* response. Redirect HTTPErrors are
+  now caught on every hop (including the first), so release assets
+  download correctly again and the store scan reports plugins.
+
 ## [7.5.5] - 2026-08-17
 
 ### Security

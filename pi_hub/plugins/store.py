@@ -251,21 +251,29 @@ def _gh_asset(owner: str, repo: str, asset_id: int) -> Tuple[bytes, str | None]:
     url = f"https://api.github.com/repos/{owner}/{repo}/releases/assets/{int(asset_id)}"
     cap = MAX_TARBALL + (1 << 20)          # allow a little slack over the cap
     opener = urllib.request.build_opener(_NoRedirect)
+    _REDIRECT_CODES = (301, 302, 303, 307, 308)
     try:
         req = urllib.request.Request(url, headers=headers)
-        r = opener.open(req, timeout=TIMEOUT)
+        try:
+            r = opener.open(req, timeout=TIMEOUT)
+        except urllib.error.HTTPError as e:
+            if e.code not in _REDIRECT_CODES:
+                raise
+            r = e                      # first hop — loop below handles it
         hops = 0
-        while r.status in (301, 302, 303, 307, 308):
+        # With _NoRedirect the opener RAISES HTTPError on 3xx instead of
+        # returning a response — catch redirects on the hop and re-issue
+        # manually so credentials can be scrubbed cross-host.
+        while r.status in _REDIRECT_CODES:
+            loc = r.headers.get("Location", "")
+            r.close()
+            if not loc:
+                return b"", "redirect without Location"
             hops += 1
             if hops > 5:                 # redirect loop — give up
-                r.close()
                 return b"", "too many redirects"
-            loc = r.headers.get("Location", "")
-            if not loc:
-                break
             next_url = urllib.parse.urljoin(r.geturl(), loc)
             next_host = urllib.parse.urlsplit(next_url).netloc.lower()
-            r.close()
             if next_host == urllib.parse.urlsplit(url).netloc.lower():
                 req = urllib.request.Request(next_url, headers=headers)
             else:
@@ -273,7 +281,13 @@ def _gh_asset(owner: str, repo: str, asset_id: int) -> Tuple[bytes, str | None]:
                 safe = {k: v for k, v in headers.items()
                         if k.lower() != "authorization"}
                 req = urllib.request.Request(next_url, headers=safe)
-            r = opener.open(req, timeout=TIMEOUT)
+            try:
+                r = opener.open(req, timeout=TIMEOUT)
+            except urllib.error.HTTPError as e:
+                if e.code in _REDIRECT_CODES:
+                    r = e                      # another hop — loop continues
+                else:
+                    raise
         try:
             buf = bytearray()
             while True:
