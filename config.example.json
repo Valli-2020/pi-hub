@@ -1,57 +1,74 @@
 {
   "title": "Pi Hub",
-  "pi_host": "raspberrypi",
+  "pi_host": "hub.example.lan",
   "hosts": [
     {
-      "id": "keller",
-      "name": "Keller Server",
+      "id": "workstation",
+      "name": "Workstation",
       "os_label": "Debian",
-      "ip": "192.168.1.50",
-      "mac": "AA:BB:CC:DD:EE:FF",
+      "ip": "192.0.2.10",
+      "mac": "00:00:5E:00:53:10",
       "type": "linux",
-      "icon": "server",
-      "capabilities": ["wake", "shutdown", "reboot", "grub_switch", "dualboot"],
-      "dual_boot_peer": "winpc",
-      "grub_entries": {
-        "windows": "Windows 10",
-        "debian": "Debian GNU/Linux"
-      }
+      "icon": "linux",
+      "ssh_user": "root",
+      "capabilities": ["wake", "shutdown", "reboot"]
     },
     {
-      "id": "winpc",
-      "name": "Windows PC",
-      "os_label": "Windows 10",
-      "ip": "192.168.1.51",
-      "mac": "11:22:33:44:55:66",
+      "id": "workstation-win",
+      "name": "Workstation (Windows)",
+      "os_label": "Windows 11",
+      "ip": "192.0.2.11",
+      "mac": "00:00:5E:00:53:10",
       "type": "windows",
       "icon": "windows",
-      "capabilities": ["wake", "shutdown", "dualboot"],
-      "dual_boot_peer": "keller",
-      "ssh_shutdown_cmd": "powershell -Command \"Stop-Computer -Force\""
+      "ssh_user": "admin",
+      "dual_boot_peer": "workstation",
+      "capabilities": ["wake", "shutdown", "dualboot"]
     },
     {
-      "id": "ollama",
-      "name": "Ollama Box",
-      "os_label": "Ubuntu",
-      "ip": "192.168.1.60",
-      "mac": "AA:BB:CC:DD:EE:01",
-      "type": "linux",
+      "id": "nas",
+      "name": "NAS",
+      "os_label": "Debian",
+      "ip": "192.0.2.20",
+      "type": "other",
       "icon": "server",
-      "capabilities": ["wake", "shutdown", "reboot"]
+      "capabilities": []
     }
   ],
   "services": [
-    { "name": "Example", "url": "http://raspberrypi:8080", "icon": "docker", "status_port": 8080 },
-    { "name": "Monitoring", "url": "http://raspberrypi:9090", "icon": "docker", "status_port": 9090, "group": "monitoring" }
+    {
+      "name": "Media Server",
+      "url": "http://192.0.2.20:8096",
+      "icon": "app",
+      "status_port": 8096,
+      "group": "nas",
+      "host": "nas",
+      "source": "manual"
+    }
   ],
-  "dockge": { "base_url": "http://127.0.0.1:5001" },
-  "proxmox": {
-    "enabled": false,
-    "host": "proxmox",
-    "node": "keller",
-    "_token_note": "Set PROXMOX_TOKEN env var or place token in secrets.json (0600). Format: PVEAPIToken=root@pam!<name>=<uuid>"
-  },
   "groups": {
-    "monitoring": { "label": "Monitoring Stack" }
-  }
+    "nas": { "label": "NAS" },
+    "lab": { "label": "Lab" }
+  },
+  "dockge": {
+    "stacks_dir": "/opt/stacks",
+    "base_url": "http://127.0.0.1:5001"
+  },
+  "proxmox": [
+    {
+      "id": "pve1",
+      "enabled": false,
+      "host": "192.0.2.30",
+      "node": "REQUIRED-set-your-node-name",
+      "cert_fingerprint": "",
+      "_token_note": "Set PROXMOX_TOKEN env var or place the token in secrets.json (0600). Format: PVEAPIToken=root@pam!<name>=<uuid>"
+    }
+  ],
+  "scan": {
+    "auto_add": false,
+    "sources": [
+      { "type": "dockge-local" }
+    ]
+  },
+  "auth": { "enabled": true }
 }

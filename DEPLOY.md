@@ -1,6 +1,6 @@
 # Pi Hub — Deployment
 
-Current version: **v7.5.x**. The updater ships with core — no plugin needed.
+Current version: **v7.6.x**. The updater ships with core — no plugin needed.
 
 ## Fresh install
 
@@ -14,8 +14,8 @@ cp config.example.json config.json
 # → set dashboard title, proxmox instances, scan sources, auth on
 
 # 3. Secrets (Proxmox token, SSH keys) — NEVER in config.json
-#    Create secrets.json (chmod 600) with your Proxmox API token:
-echo '{"proxmox": {"token": "PVEAPIToken=root@pam!pi-hub=YOUR_NEW_TOKEN"}}' > secrets.json
+#    Create secrets.json (chmod 600), keyed by Proxmox instance id:
+echo '{"proxmox_tokens": {"pve1": "PVEAPIToken=root@pam!pi-hub=YOUR_NEW_TOKEN"}}' > secrets.json
 chmod 600 secrets.json
 
 # 4. Systemd user service

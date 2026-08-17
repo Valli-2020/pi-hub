@@ -139,6 +139,9 @@
   h3.group { font-size:11.5px; font-weight:600; color:var(--faint); margin:22px 0 10px;
              text-transform:uppercase; letter-spacing:.07em; }
   h3.group:first-child { margin-top:0; }
+  /* Group heading inside the services grid — spans the full row. */
+  h3.svc-group { grid-column:1 / -1; margin:18px 0 2px; }
+  h3.svc-group:first-child { margin-top:0; }
 
   .grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(258px,1fr)); gap:12px; }
 
@@ -1427,9 +1430,22 @@ function svcSortKey(s, key){
   return String(s.name || '').toLowerCase();
 }
 
+/* Group labels come from config.groups — either a string map
+   {"nas": "NAS", …} or objects with a label: {"nas": {"label": "NAS"}}.
+   Sorting by group inserts a heading per group so the labels are actually
+   visible — previously the map was served by the API and rendered
+   nowhere. */
+function groupLabel(key){
+  const groups = (S.cfg && S.cfg.groups) || {};
+  const v = groups[key];
+  if (v && typeof v === 'object') return v.label || key;
+  return v || key || 'Ungrouped';
+}
+
 function renderServices(services){
   const g = $('#services'); g.innerHTML = '';
   const sortKey = $('#svc-sort').value;
+  let lastGroup = null;
   [...services].sort((a, b) => {
     if (sortKey === 'host') {
       const d = svcSortKey(a,'host').localeCompare(svcSortKey(b,'host'));
@@ -1438,6 +1454,16 @@ function renderServices(services){
     }
     return svcSortKey(a, sortKey).localeCompare(svcSortKey(b, sortKey));
   }).forEach(s => {
+    if (sortKey === 'group') {
+      const gk = String(s.group || '');
+      if (gk !== lastGroup) {
+        lastGroup = gk;
+        const h = document.createElement('h3');
+        h.className = 'group svc-group';
+        h.textContent = groupLabel(gk);
+        g.appendChild(h);
+      }
+    }
     const id = slug(s.name);
     const admin = window.USER && window.USER.role === 'admin';
     const origin = (s.host ? esc(s.host) + (s.source ? ' · ' + esc(s.source) : '') : (s.source ? esc(s.source) : ''));
@@ -1542,7 +1568,18 @@ function paintContainers(){
     return (x < y ? -1 : x > y ? 1 : 0) * S.sort.dir;
   });
 
-  const sig = JSON.stringify(list);
+  /* The signature mirrors what is actually DISPLAYED, at display
+     precision.  Hashing the raw cpu/mem floats made it differ on every
+     poll, so the shortcut never hit and the table was rebuilt every few
+     seconds — losing text selection and focus. Rounding to the rendered
+     decimal keeps the usage bars live while skipping no-op rebuilds. */
+  const sig = list.map(c => {
+    const run = c.status === 'running';
+    const cpu = run && c.cpu != null ? (c.cpu * 100).toFixed(1) : '';
+    const mem = run && c.mem ? (c.mem / 1073741824).toFixed(1) : '';
+    return [c.instance, c.vmid, c.name, c.status,
+            (c.tags || []).join(','), cpu, mem].join('|');
+  }).join(';');
   if (paintContainers._sig === sig) { renderCtFilters(); return; }
   paintContainers._sig = sig;
 

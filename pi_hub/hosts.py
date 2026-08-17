@@ -7,6 +7,8 @@ config loading or network primitives.  Proxmox code lives in
 
 from __future__ import annotations
 
+import re
+import shlex
 import subprocess
 import threading
 import time
@@ -57,10 +59,23 @@ def _host_key(host: Host) -> str:
 
 # ── SSH helpers ───────────────────────────────────────────────────────────────
 
-def _ssh_target(host: Host) -> str:
-    """Build the ``user@host`` SSH target string for *host*."""
-    user = host.get("ssh_user", DEFAULT_SSH_USER)
-    target = host.get("ssh_host", host.get("ip", ""))
+_SSH_USER_RE = re.compile(r"[A-Za-z0-9._-]{1,32}")
+_SSH_HOST_RE = re.compile(r"[A-Za-z0-9._:-]{1,255}")
+
+
+def _ssh_target(host: Host) -> Optional[str]:
+    """Build the ``user@host`` SSH target for *host*, or None if unusable.
+
+    Both halves are validated.  ``ssh`` reads any argument starting with
+    ``-`` as an option, so an ``ssh_user`` of ``-oProxyCommand=…`` would
+    turn the target into a local command execution — argument injection,
+    not shell injection, and therefore not fixed by quoting.  A strict
+    character class is the fix.
+    """
+    user = str(host.get("ssh_user", DEFAULT_SSH_USER) or DEFAULT_SSH_USER)
+    target = str(host.get("ssh_host", host.get("ip", "")) or "")
+    if not _SSH_USER_RE.fullmatch(user) or not _SSH_HOST_RE.fullmatch(target):
+        return None
     return f"{user}@{target}"
 
 
@@ -78,8 +93,11 @@ def _ssh_run(
     mid-transaction, leaving the target in an inconsistent state.
     """
     try:
+        target = _ssh_target(host)
+        if target is None:
+            return None
         return subprocess.run(
-            ["ssh"] + SSH_OPTS + [_ssh_target(host), cmd],
+            ["ssh"] + SSH_OPTS + [target, cmd],
             timeout=timeout,
             capture_output=True,
             text=True,
@@ -194,8 +212,14 @@ def get_grub_entries(host: Host) -> Dict[str, str]:
 
 
 def grub_reboot(host: Host, entry: str) -> bool:
-    """Set the GRUB one-shot boot entry via ``grub-reboot``."""
-    return ssh_cmd(host, f"grub-reboot '{entry}'")
+    """Set the GRUB one-shot boot entry via ``grub-reboot``.
+
+    The entry comes from config (``grub_entries``) and is free text — a
+    GRUB menu title legitimately contains spaces and parentheses, and may
+    contain an apostrophe.  It is therefore quoted with :func:`shlex.quote`
+    instead of being pasted between hand-written quotes.
+    """
+    return ssh_cmd(host, f"grub-reboot {shlex.quote(str(entry))}")
 
 
 def _grub_get_next_raw(host: Host) -> Optional[str]:
@@ -308,13 +332,25 @@ def get_dualboot_state(host: Host) -> Optional[str]:
     linux = host if host.get("type") == "linux" else peer
     win = peer if linux is host else host
 
+    linux_ip = linux.get("ip", "")
+    win_ip = win.get("ip", "")
+    if not linux_ip or not win_ip:
+        return UNKNOWN            # incomplete pair — never raise into the caller
+
     # Concurrent ICMP pings (ICMP is required for Windows detection —
     # Windows firewalls routinely drop TCP/22).
-    f_linux = POOL.submit(ping, linux["ip"])
-    f_win = POOL.submit(ping, win["ip"])
+    #
+    # A failure here must stay local: this runs inside get_all_status(),
+    # so an exception would take down the status of EVERY host, not just
+    # this pair.
+    f_linux = POOL.submit(ping, linux_ip)
+    f_win = POOL.submit(ping, win_ip)
 
-    linux_up = f_linux.result(timeout=PING_RESULT_TIMEOUT)
-    win_up = f_win.result(timeout=PING_RESULT_TIMEOUT)
+    try:
+        linux_up = f_linux.result(timeout=PING_RESULT_TIMEOUT)
+        win_up = f_win.result(timeout=PING_RESULT_TIMEOUT)
+    except Exception:
+        return UNKNOWN
 
     if not linux_up and not win_up:
         return MACHINE_OFF

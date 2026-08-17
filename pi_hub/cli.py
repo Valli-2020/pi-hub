@@ -3,16 +3,16 @@
 
 Examples:
   pi_hub_cli.py status                 # host + service status table
-  pi_hub_cli.py wake ollama            # WOL packet
-  pi_hub_cli.py reboot keller          # SSH reboot
-  pi_hub_cli.py shutdown winpc         # SSH shutdown
+  pi_hub_cli.py wake workstation       # WOL packet
+  pi_hub_cli.py reboot nas             # SSH reboot
+  pi_hub_cli.py shutdown workstation   # SSH shutdown
   pi_hub_cli.py ct                     # list Proxmox containers (all instances)
   pi_hub_cli.py ct 105 start           # start container 105 (default instance)
-  pi_hub_cli.py ct pve:102 start       # start container 102 on instance 'pve'
+  pi_hub_cli.py ct pve1:102 start      # start container 102 on instance 'pve1'
   pi_hub_cli.py login                  # store a session token (0600)
   pi_hub_cli.py users                  # list users (admin)
-  pi_hub_cli.py useradd bob viewer     # create user (admin)
-  pi_hub_cli.py userdel bob            # delete user (admin)
+  pi_hub_cli.py useradd alex viewer    # create user (admin)
+  pi_hub_cli.py userdel alex           # delete user (admin)
   pi_hub_cli.py passwd                 # change own password
 
 Point at a different host with HUB_API=http://host:8898.
@@ -178,7 +178,7 @@ def cmd_users():
 
 
 def _parse_caps(args):
-    """Parse 'wake=ollama,winpc shutdown=ollama containers=102' → caps dict."""
+    """Parse 'wake=workstation shutdown=workstation containers=pve1:102' → caps dict."""
     caps = {}
     for part in args:
         if "=" not in part:
@@ -191,7 +191,7 @@ def _parse_caps(args):
 def cmd_useradd(args):
     if len(args) < 1:
         print("usage: useradd <name> [admin|viewer] [action=target,target ...]")
-        print("  e.g. useradd max viewer wake=ollama,winpc containers=102")
+        print("  e.g. useradd alex viewer wake=workstation containers=pve1:102")
         return
     name = args[0]
     role = args[1] if len(args) > 1 and args[1] in ("admin", "viewer") else "viewer"

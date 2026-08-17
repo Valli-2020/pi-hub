@@ -22,8 +22,10 @@ SECRETS_PATH = os.path.join(_REPO_ROOT, "secrets.json")
 
 # ── Defaults ─────────────────────────────────────────────────────────────────
 DEFAULT_PORT = 8898
-# Neutral default — every install must set its own node name in config.
-DEFAULT_PROXMOX_NODE = "pve"
+# There is deliberately NO default Proxmox node name.  A wrong node is a
+# silent failure: the Proxmox API answers an unknown node with an empty
+# list rather than an error, so the UI shows "0 containers" and looks
+# healthy.  An unset node must surface as an explicit error instead.
 DEFAULT_PROXMOX_SSH_USER = "root"
 
 Host = Dict[str, Any]
@@ -219,8 +221,14 @@ def proxmox_host(instance_id: str = "") -> str:
 
 
 def proxmox_node(instance_id: str = "") -> str:
-    """Return the instance's node name (config-set, neutral default)."""
-    return _instance_by_id(instance_id).get("node", DEFAULT_PROXMOX_NODE)
+    """Return the instance's node name, or '' when it is not configured.
+
+    Callers MUST treat '' as a configuration error and refuse the request —
+    never substitute a guess.  A wrong node name is a silent failure: the
+    Proxmox API answers an unknown node with an empty list, so the UI would
+    show "0 containers" and look perfectly healthy.
+    """
+    return _instance_by_id(instance_id).get("node", "")
 
 
 def proxmox_ssh_user(instance_id: str = "") -> str:

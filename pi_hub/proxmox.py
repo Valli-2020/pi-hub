@@ -237,17 +237,29 @@ def _assert_token_not_leaked(data: Any, token: str) -> None:
     """Crash if *token* appears anywhere in *data*.
 
     This is a hard invariant — a leak means we accidentally serialized the
-    token into a user-facing response.
+    token into a user-facing response.  Deliberately NOT an ``assert``:
+    ``python -O`` strips assertions, and an invariant that disappears under
+    an interpreter flag is not an invariant.
     """
     if not token:
         return
     payload = data if isinstance(data, str) else json.dumps(data)
-    assert token not in payload, "SECURITY: Proxmox token leaked in return value"
+    if token in payload:
+        raise RuntimeError("SECURITY: Proxmox token leaked in return value")
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # Low-level HTTP helpers (per instance, v7)
 # ═══════════════════════════════════════════════════════════════════════════════
+
+def _friendly(exc: Exception, host: str) -> str:
+    """Turn a connection error into a message that names the real host."""
+    err = str(exc)
+    if any(kw in err for kw in ("timed out", "Name or service", "Connection",
+                                "refused", "getaddrinfo", "Network is unreachable")):
+        return f"Proxmox unreachable — no answer from {host or 'the configured host'}"
+    return err
+
 
 def _api_get(instance_id: str, path: str) -> Dict[str, Any]:
     """GET *path* from the Proxmox JSON API of *instance_id*.
@@ -262,14 +274,7 @@ def _api_get(instance_id: str, path: str) -> Dict[str, Any]:
         with _open(url, token, REQUEST_TIMEOUT, instance_id) as r:
             return json.loads(r.read().decode())
     except Exception as exc:
-        err = str(exc)
-        if any(
-            kw in err
-            for kw in ("timed out", "Name or service", "Connection",
-                       "refused", "getaddrinfo")
-        ):
-            err = "Proxmox unreachable"
-        raise RuntimeError(err) from exc
+        raise RuntimeError(_friendly(exc, host)) from exc
 
 
 def _api_post(instance_id: str, path: str) -> Dict[str, Any]:
@@ -289,14 +294,7 @@ def _api_post(instance_id: str, path: str) -> Dict[str, Any]:
         with _open(url, token, REQUEST_TIMEOUT, instance_id, data=b"{}") as r:
             return json.loads(r.read().decode())
     except Exception as exc:
-        err = str(exc)
-        if any(
-            kw in err
-            for kw in ("timed out", "Name or service", "Connection",
-                       "refused", "getaddrinfo")
-        ):
-            err = "Proxmox unreachable"
-        raise RuntimeError(err) from exc
+        raise RuntimeError(_friendly(exc, host)) from exc
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -315,6 +313,15 @@ def _fetch_instance(instance_id: str) -> Dict[str, Any]:
     token = proxmox_token(instance_id)
     if not token:
         return {"success": False, "error": "Missing Proxmox API token"}
+
+    node = proxmox_node(instance_id)
+    if not node:
+        # Fail loudly: an unknown node returns an EMPTY list from the API,
+        # not an error, so guessing here would show "0 containers" and look
+        # perfectly healthy.
+        return {"success": False,
+                "error": f"instance '{instance_id or 'default'}': no node name "
+                         "configured — set \"node\" to the Proxmox node"}
 
     # ── Cache checks (inside lock) ──
     with _cache_lock:
@@ -442,16 +449,19 @@ def pve_action(vmid: str, action: str, instance_id: str = "") -> Dict[str, Any]:
     if not token:
         return {"success": False, "error": "Missing Proxmox API token"}
 
-    # ── Negative cache: skip the HTTP call while in backoff ──
-    with _cache_lock:
-        cached = _cached_error(instance_id)
-        if cached is not None:
-            _assert_token_not_leaked(cached, token)
-            return cached
+    node = proxmox_node(instance_id)
+    if not node:
+        return {"success": False,
+                "error": f"instance '{instance_id or 'default'}': no node name "
+                         "configured — set \"node\" to the Proxmox node"}
+
+    # NOTE: the read-path backoff is deliberately NOT consulted here.  A
+    # container action is an explicit click, and refusing it because a
+    # status poll failed a moment ago is exactly wrong when someone is
+    # trying to restart a stuck container.
 
     # ── Execute (no lock during I/O) ──
     try:
-        node = proxmox_node(instance_id)
         data = _api_post(instance_id, f"/api2/json/nodes/{node}/lxc/{vmid}/status/{action}")
         if data.get("data"):
             result: Dict[str, Any] = {

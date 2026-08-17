@@ -265,7 +265,11 @@ class PluginContext:
         from pi_hub.config import _config_edit_lock  # local: avoid cycle
         with _config_edit_lock:
             tmp = self._config_path + ".tmp"
-            with open(tmp, "w") as f:
+            # Atomic 0600 write — plugin config routinely holds API keys, so
+            # it gets the same file mode as the core's secrets, not whatever
+            # the process umask happens to be.
+            fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+            with os.fdopen(fd, "w") as f:
                 f.write(json.dumps(self._config, indent=2))
                 f.flush()
                 os.fsync(f.fileno())

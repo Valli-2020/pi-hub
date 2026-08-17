@@ -394,7 +394,16 @@ def strip_caps_prefix(prefix: str) -> list:
     return affected
 
 
-def change_password(username: str, password: str, by: str) -> dict:
+def change_password(username: str, password: str, by: str,
+                    keep_token: str = "") -> dict:
+    """Set a new password and invalidate every other session of that user.
+
+    A password change is the standard reaction to "someone may have my
+    session".  It only helps if it actually logs the other sessions out,
+    so sessions are revoked for BOTH the admin-reset and the self-service
+    case.  *keep_token* — the caller's own token — survives, so changing
+    your own password does not log you out of the tab you are using.
+    """
     if len(password) < _MIN_PASSWORD_LEN:
         return {"ok": False, "error": "password must be at least 8 characters"}
     with _users_lock:
@@ -404,8 +413,7 @@ def change_password(username: str, password: str, by: str) -> dict:
         users[username]["hash"] = hash_password(password)
         users[username]["updated"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
         save_users(users)
-    if by != username:          # admin reset → kick the user's sessions
-        revoke_user_sessions(username)
+    revoke_user_sessions(username, keep_token=keep_token if by == username else "")
     return {"ok": True}
 
 
@@ -506,9 +514,12 @@ def revoke_session(token: str) -> None:
             _save_sessions(_sessions)
 
 
-def revoke_user_sessions(username: str) -> None:
+def revoke_user_sessions(username: str, keep_token: str = "") -> None:
+    """Drop every session of *username*, optionally sparing one token."""
+    keep_key = _token_key(keep_token) if keep_token else ""
     with _sessions_lock:
-        keys = [k for k, s in _sessions.items() if s.get("user") == username]
+        keys = [k for k, s in _sessions.items()
+                if s.get("user") == username and k != keep_key]
         for k in keys:
             del _sessions[k]
         if keys:
@@ -604,10 +615,10 @@ def classify(method: str, path: str) -> str:
         # (shared unauthenticated GitHub rate-limit budget).
         return "admin"
     if path.startswith("/api/plugin/"):
-        # Plugins handle their own fine-grained caps in their route handlers.
-        # Any authenticated user may reach a plugin route; the plugin checks
-        # the per-route caps list against the session.
-        return "read" if method == "GET" else "read"
+        # Any authenticated user may REACH a plugin route regardless of
+        # method; the manager then enforces the route's own caps list
+        # (including "admin") before the handler runs.
+        return "read"
     if method == "GET":
         return "read"                              # all other GETs require login
     if method == "POST" and (

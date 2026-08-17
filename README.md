@@ -47,23 +47,51 @@ Production install (systemd, auth, Tailscale bind): see **DEPLOY.md**.
 
 Config lives in `config.json` (gitignored — never commit it).
 
-- **Hosts** — `hosts: [{id, name, mac, ip, ssh_user?, ssh_host?,
-  type?, dual_boot_peer?, grub_entries?}]`
+- **Hosts** — `hosts: [{id, name, mac?, ip, ssh_user?, ssh_host?,
+  type? (linux|windows|other), dual_boot_peer?, grub_entries?}]`.
+  `mac` is optional: hosts that cannot be woken (a VPS, a NAS) are
+  still shown, just without a wake button.
 - **Proxmox** — `proxmox: [{id, host, node, enabled?, ssh_user?}]`
-  (multi-instance since v7). The API token goes in `secrets.json`, NOT
-  config.json:
+  (multi-instance since v7). `node` must name your node — there is
+  deliberately **no default**: an unknown node makes the Proxmox API
+  return an empty list rather than an error, so a wrong default shows
+  "0 containers" and looks perfectly healthy. The API token goes in
+  `secrets.json`, NOT config.json:
   ```json
-  {"proxmox": {"token": "PVEAPIToken=root@pam!token-id=YOUR_TOKEN"}}
+  {"proxmox_tokens": {"pve1": "PVEAPIToken=root@pam!token-id=YOUR_TOKEN"}}
   ```
   Create a token on the Proxmox host:
   ```bash
   pveum user token add root@pam token-id --comment "Pi Hub" --privsep 0
   ```
+- **TLS pinning (optional)** — set `cert_fingerprint` (SHA-256 of the
+  Proxmox certificate) on an instance and the API connection is pinned;
+  a mismatch refuses the request instead of sending the token. Without
+  a fingerprint the connection fails closed against the CA store
+  (self-signed LAN certs need the fingerprint). Get it from the Proxmox
+  host:
+  ```bash
+  openssl x509 -in /etc/pve/local/pve-ssl.pem -noout -fingerprint -sha256
+  ```
+  `PROXMOX_CERT_FINGERPRINT` env var pins the default instance too.
 - **Scan** — `scan: {auto_add?, sources: [{type, host_id?, name?}]}`
   (nginx `streams.conf` + Dockge compose discovery; candidates are never
   auto-added)
 - **Auth** — `"auth": true` enables the login + per-user capability
   matrix. First run shows a setup screen creating the first admin.
+  Auth is **on by default** — a `config.json` without an `auth` block
+  requires login rather than publishing an open dashboard.
+
+## Environment variables
+
+| Variable | Effect |
+|----------|--------|
+| `UPDATE_OWNER`, `UPDATE_REPO` | GitHub owner/repo the self-update checks (defaults: `Valli-2020` / `pi-hub`). |
+| `BACKUP_ROOT` | Where `apply` writes backups. Default `<install root>/.pi-hub-backups`. |
+| `PROXMOX_TOKEN` | Token for the default instance (overrides `secrets.json`). |
+| `PROXMOX_CERT_FINGERPRINT` | TLS pin for the default Proxmox instance. |
+| `GITHUB_TOKEN` | Raises the GitHub rate limit; required for private plugin repos. |
+| `UPDATE_ROOT` | Override the detected install root. |
 
 ## Updating
 

@@ -75,7 +75,13 @@ def service_endpoint(svc: Dict[str, Any]) -> Tuple[str, int]:
             host = hp
     if not port:
         port = 443 if scheme == "https" else 80
-    return host, int(port)
+    try:
+        # status_port comes from config and may be a hand-typed string.
+        # This function is called from the service health probe, so a
+        # single bad value must not take down the whole services view.
+        return host, int(port)
+    except (TypeError, ValueError):
+        return host, 0
 
 
 # ── nginx streams.conf ───────────────────────────────────────────────────────
@@ -247,12 +253,19 @@ def _scan_compose_dir(directory: str) -> List[Dict[str, Any]]:
     return out
 
 
-def _ssh_compose_scan(host_ip: str) -> List[Dict[str, Any]]:
-    """Run the compose scan on a remote host over SSH (argv list, timeout)."""
+def _ssh_compose_scan(host_ip: str, ssh_user: str = "root") -> List[Dict[str, Any]]:
+    """Run the compose scan on a remote host over SSH (argv list, timeout).
+
+    Honours the host's configured ``ssh_user`` — hard-coding root here
+    made the scan fail silently on every host that uses a dedicated
+    service account.
+    """
+    if not re.fullmatch(r"[A-Za-z0-9._-]{1,32}", ssh_user or ""):
+        return []
     try:
         r = subprocess.run(
             ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=5",
-             f"root@{host_ip}",
+             f"{ssh_user}@{host_ip}",
              "find", "/opt/stacks", "-maxdepth", "2", "(",
              "-name", "compose.y*ml", "-o", "-name", "docker-compose.y*ml",
              ")", "-exec", "cat", "{}", "+"],
@@ -355,7 +368,9 @@ def run_scan() -> Dict[str, Any]:
         elif stype == "dockge-ssh":
             host = find_host_by_id(src.get("host_id", ""))
             ip = str(host.get("ip", ""))
-            for cand in _ssh_compose_scan(ip):
+            for cand in _ssh_compose_scan(
+                ip, str(host.get("ssh_user", "root") or "root")
+            ):
                 if not cand.get("name") or not cand.get("port"):
                     continue
                 key = (src["name"], int(cand["port"]))
@@ -379,4 +394,4 @@ def _pi_hostname() -> str:
         import socket
         return socket.gethostname()
     except Exception:
-        return "raspberrypi"
+        return "localhost"

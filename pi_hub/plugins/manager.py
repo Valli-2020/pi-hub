@@ -21,6 +21,7 @@ import re
 import sys
 import threading
 import time
+import traceback
 from typing import Any, Dict, List, Optional, Tuple
 
 from pi_hub.plugins.base import (
@@ -204,13 +205,25 @@ class PluginManager:
             sys.modules.pop(f"pi_hub_plugins.{name}", None)
             raise PluginLoadError(f"import failed: {e}") from e
 
-        # Find the Plugin subclass
-        plugin_cls = None
-        for attr_name in dir(mod):
-            attr = getattr(mod, attr_name)
-            if isinstance(attr, type) and issubclass(attr, Plugin) and attr is not Plugin:
-                plugin_cls = attr
-                break
+        # Find the Plugin subclass.  An explicit PLUGIN_CLASS wins; the
+        # scan is the fallback and is deliberate about what it accepts —
+        # dir() is alphabetical, so a module that also defines a shared
+        # base class or imports another plugin's class would otherwise
+        # load whichever name sorts first.
+        plugin_cls = getattr(mod, "PLUGIN_CLASS", None)
+        if not (isinstance(plugin_cls, type) and issubclass(plugin_cls, Plugin)):
+            candidates = [
+                attr for attr in (getattr(mod, n) for n in dir(mod))
+                if isinstance(attr, type) and issubclass(attr, Plugin)
+                and attr is not Plugin
+                and attr.__module__ == mod.__name__   # defined here, not imported
+            ]
+            if len(candidates) > 1:
+                names = ", ".join(sorted(c.__name__ for c in candidates))
+                raise PluginLoadError(
+                    f"{init_path} defines several Plugin subclasses ({names}) — "
+                    "set PLUGIN_CLASS to the one to load")
+            plugin_cls = candidates[0] if candidates else None
         if plugin_cls is None:
             raise PluginLoadError(f"no Plugin subclass found in {init_path}")
 
@@ -320,8 +333,12 @@ class PluginManager:
                 if isinstance(result, tuple):
                     return result
                 return result, 200
-            except Exception as e:
-                return {"error": f"Plugin error: {e}"}, 500
+            except Exception:
+                # Log the detail, return a generic message: the exception
+                # text carries file paths and internals, and every
+                # authenticated user (including a viewer) sees this.
+                traceback.print_exc()
+                return {"error": f"Plugin '{name}' failed — see server log"}, 500
 
         return {"error": f"Not found in plugin {name}"}, 404
 

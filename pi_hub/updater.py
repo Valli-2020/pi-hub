@@ -33,8 +33,13 @@ import urllib.parse
 import urllib.request
 from typing import Any
 
-OWNER = "Valli-2020"
-REPO = "pi-hub"
+# Update source.  Defaults to this project's upstream; set UPDATE_OWNER /
+# UPDATE_REPO in the environment (or edit these two lines) to point the
+# self-update at your own fork.  They are constants at import time on
+# purpose — never request-configurable, or the update route becomes an
+# arbitrary-code installer.
+OWNER = os.environ.get("UPDATE_OWNER", "Valli-2020").strip() or "Valli-2020"
+REPO = os.environ.get("UPDATE_REPO", "pi-hub").strip() or "pi-hub"
 API_LATEST = f"https://api.github.com/repos/{OWNER}/{REPO}/releases/latest"
 CODELOAD_BASE = f"https://codeload.github.com/{OWNER}/{REPO}/tar.gz/refs/tags/"
 CODELOAD_HOST = "codeload.github.com"
@@ -427,11 +432,15 @@ def _swap(root: str, tag: str) -> str | None:
     """Backup → atomic per-directory swap → rollback on failure → cleanup."""
     staging = os.path.join(root, ".pi-hub-staging", tag)
     tree = os.path.join(staging, "tree")
-    # Backups live INSIDE the install root (.pi-hub-backups/), not in the
-    # parent directory — /home/pi/pi-hub-backups worked, but an install
-    # at /app would try to write /pi-hub-backups at the filesystem root
-    # and fail (or worse, collide with another install).
-    backup_dir = os.path.join(root, ".pi-hub-backups",
+    # Backups live INSIDE the install root.  Writing them to the parent
+    # directory assumes the app sits one level below a writable directory,
+    # which is false for container images and package installs (root
+    # "/app" would put backups in "/").  Override with BACKUP_ROOT.
+    # Uniqueness suffix: two applies within the same second must not
+    # collide on shutil.copytree without dirs_exist_ok.
+    backup_base = os.environ.get("BACKUP_ROOT", "").strip() or \
+        os.path.join(root, ".pi-hub-backups")
+    backup_dir = os.path.join(backup_base,
                               time.strftime("%Y%m%d-%H%M%S") +
                               f"-{os.getpid()}")
 

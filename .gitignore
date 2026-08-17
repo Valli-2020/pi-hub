@@ -19,8 +19,8 @@ pi_hub_plugins/*
 # test / experiments
 experiments/
 
-# local notes + brand icons (public repo ships no icon set)
-web/icons.json
+# local notes (public repo ships a GENERIC icon set in web/icons.json —
+# keep a brand-specific set out of the repo by overriding it locally)
 secrets.example.json
 _*.md
 docs/

@@ -11,9 +11,9 @@ import json as _json
 import ipaddress as _ipaddress
 import os as _os
 import re as _re
-import threading as _threading
 from copy import deepcopy as _deepcopy
 from typing import Any, Dict, List, Tuple
+from urllib.parse import unquote as _unquote
 
 from pi_hub import auth
 from pi_hub import config
@@ -189,7 +189,11 @@ def _handle_start_debian(host_id: str) -> Response:
         return {"success": True, "message": "Debian is already running"}, 200
 
     # Machine off — just WOL (Debian is GRUB default)
-    net.send_wol(linux["mac"], linux.get("ip", ""))
+    mac = linux.get("mac", "")
+    if not mac:
+        return {"success": False,
+                "error": "no MAC configured for this host — cannot wake it"}, 400
+    net.send_wol(mac, linux.get("ip", ""))
     return {"success": True, "message": "WOL sent, booting Debian"}, 200
 
 
@@ -210,9 +214,19 @@ def _handle_grub_reset(host_id: str) -> Response:
 # ═══════════════════════════════════════════════════════════════════════════════
 
 _HOST_CAPABILITIES = ("wake", "shutdown", "reboot", "grub_switch", "dualboot")
-_SERVICE_NAME_RE = _re.compile(r"[A-Za-z0-9._-]{1,32}")
+
+# Service names are display names AND URL path segments.  Spaces and
+# parentheses are legitimate in a name ("Media Server (attic)"), so they
+# are allowed and the path segment is percent-decoded before matching;
+# only characters that would break routing or the filesystem are refused.
+_SERVICE_NAME_RE = _re.compile(r"[^/\\\x00-\x1f]{1,64}")
+_SSH_USER_RE = _re.compile(r"[A-Za-z0-9._-]{1,32}")
 _SERVICE_SOURCES = ("dockge", "nginx", "manual")
-_config_edit_lock = _threading.Lock()   # serializes read-modify-write on config.json
+
+# Shared with pi_hub.config so plugin config writes and core config writes
+# serialize against each other instead of each holding their own lock of
+# the same name.
+_config_edit_lock = config._config_edit_lock   # serializes read-modify-write on config.json
 
 
 def _edit_config() -> Dict[str, Any]:
@@ -242,10 +256,13 @@ def _handle_add_host(body: Dict[str, Any]) -> Response:
         _ipaddress.ip_address(ip)
     except ValueError:
         return {"error": "invalid ip"}, 400
-    if not _re.fullmatch(r"([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}", mac):
+    # MAC is OPTIONAL: plenty of hosts worth showing (a VPS, a NAS, a
+    # machine on another segment) cannot be woken over the wire.  Without
+    # a MAC the host simply gets no wake capability.
+    if mac and not _re.fullmatch(r"([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}", mac):
         return {"error": "invalid mac (XX:XX:XX:XX:XX:XX)"}, 400
-    if htype not in ("linux", "windows"):
-        return {"error": "type must be linux or windows"}, 400
+    if htype not in ("linux", "windows", "other"):
+        return {"error": "type must be linux, windows or other"}, 400
 
     with _config_edit_lock:
         cfg = _edit_config()
@@ -254,8 +271,10 @@ def _handle_add_host(body: Dict[str, Any]) -> Response:
             return {"error": f"host '{host_id}' already exists"}, 400
 
         host: Dict[str, Any] = {
-            "id": host_id, "name": name, "ip": ip, "mac": mac, "type": htype,
+            "id": host_id, "name": name, "ip": ip, "type": htype,
         }
+        if mac:
+            host["mac"] = mac
         os_label = str(body.get("os_label", "")).strip()
         if os_label:
             host["os_label"] = os_label
@@ -350,15 +369,29 @@ def _handle_update_host(host_id: str, body: Dict[str, Any]) -> Response:
             cur["ip"] = ip
         if "mac" in body:
             mac = str(body.get("mac", "")).strip()
-            if not _re.fullmatch(r"([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}", mac):
+            # MAC is OPTIONAL: hosts without one (VPS, NAS) are still valid.
+            if mac and not _re.fullmatch(r"([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}", mac):
                 return {"error": "invalid mac (XX:XX:XX:XX:XX:XX)"}, 400
-            cur["mac"] = mac
+            if mac:
+                cur["mac"] = mac
+            else:
+                cur.pop("mac", None)
         if "type" in body:
             htype = str(body.get("type", "")).strip()
-            if htype not in ("linux", "windows"):
-                return {"error": "type must be linux or windows"}, 400
+            if htype not in ("linux", "windows", "other"):
+                return {"error": "type must be linux, windows or other"}, 400
             cur["type"] = htype
-        for field in ("os_label", "icon", "ssh_user", "ssh_shutdown_cmd"):
+        if "ssh_user" in body:
+            v = str(body.get("ssh_user", "")).strip()
+            # Validated here as well as in hosts._ssh_target: a value
+            # starting with "-" is read by ssh as an option, not a user.
+            if v and not _SSH_USER_RE.fullmatch(v):
+                return {"error": "invalid ssh_user (letters, digits, . _ - only)"}, 400
+            if v:
+                cur["ssh_user"] = v
+            else:
+                cur.pop("ssh_user", None)
+        for field in ("os_label", "icon", "ssh_shutdown_cmd"):
             if field in body:
                 v = str(body.get(field, "")).strip()
                 if v:
@@ -816,6 +849,7 @@ def handle_post(path: str, params: Params, body: Dict[str, Any],
             target,
             (body.get("password", "") if isinstance(body, dict) else "") or "",
             session.get("user", ""),
+            keep_token=token,      # keep the caller signed in, drop the rest
         )
         if res["ok"]:
             return {"success": True, "message": "Password updated"}, 200
@@ -947,7 +981,7 @@ def handle_post(path: str, params: Params, body: Dict[str, Any],
 
     # ── POST /api/config/services/<name>  (admin — update service) ─────────
     if len(parts) == 4 and parts[1] == "config" and parts[2] == "services":
-        return _handle_update_service(parts[3], body)
+        return _handle_update_service(_unquote(parts[3]), body)
 
     # ── POST /api/hosts/<id>/<action>  (len=4) ───────────────────────────
     if len(parts) == 4 and parts[1] == "hosts":
@@ -1141,7 +1175,7 @@ def handle_delete(path: str, params: Params,
 
     # ── DELETE /api/config/services/<name>  (admin) ────────────────────────
     if len(parts) == 4 and parts[1] == "config" and parts[2] == "services":
-        return _handle_delete_service(parts[3])
+        return _handle_delete_service(_unquote(parts[3]))
 
     # ── Plugin store (ADMIN) ──────────────────────────────────────────────
     # Same real-admin hardening as the POST routes — uninstalling a
