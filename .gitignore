@@ -11,7 +11,7 @@ plugins_sources.json
 
 # update system artifacts
 .pi-hub-staging/
-pi-hub-backups/
+.pi-hub-backups/
 
 # plugins — user-space, never committed
 pi_hub_plugins/*

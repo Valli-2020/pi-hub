@@ -427,10 +427,11 @@ def _swap(root: str, tag: str) -> str | None:
     """Backup → atomic per-directory swap → rollback on failure → cleanup."""
     staging = os.path.join(root, ".pi-hub-staging", tag)
     tree = os.path.join(staging, "tree")
-    parent = os.path.dirname(root.rstrip(os.sep)) or os.sep
-    # Uniqueness suffix: two applies within the same second must not
-    # collide on shutil.copytree without dirs_exist_ok.
-    backup_dir = os.path.join(parent, "pi-hub-backups",
+    # Backups live INSIDE the install root (.pi-hub-backups/), not in the
+    # parent directory — /home/pi/pi-hub-backups worked, but an install
+    # at /app would try to write /pi-hub-backups at the filesystem root
+    # and fail (or worse, collide with another install).
+    backup_dir = os.path.join(root, ".pi-hub-backups",
                               time.strftime("%Y%m%d-%H%M%S") +
                               f"-{os.getpid()}")
 

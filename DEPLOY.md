@@ -54,7 +54,7 @@ The built-in updater handles everything — no manual rsync:
 1. Settings → Update card shows the latest release (checked every 30 min).
 2. **Update now** downloads the release tarball, verifies it (allowlist
    extraction, version parity, compile check, completeness check), backs
-   up the current install to `pi-hub-backups/` (last 3 kept), atomically
+   up the current install to `.pi-hub-backups/` (last 3 kept), atomically
    swaps, and restarts the service. The page reloads on the new version.
 
 API equivalent (admin session required):
@@ -67,7 +67,7 @@ curl -X POST http://<host>:8898/api/update/apply  -H "Authorization: Bearer <tok
 
 Updates never touch `config.json`, `users.json`, `secrets.json`,
 `sessions.json` or `web/icons.json`. Rollback: restore a backup from
-`pi-hub-backups/`.
+`.pi-hub-backups/`.
 
 ## Auth
 

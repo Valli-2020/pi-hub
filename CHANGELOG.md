@@ -3,6 +3,37 @@
 All notable changes to Pi Hub are documented here. Every release ships a
 changelog entry AND matching GitHub release notes.
 
+## [7.5.5] - 2026-08-17
+
+### Security
+
+- **`pct exec` allowlist hardened** — the plugin `ssh_cmd` boundary was
+  a string prefix check, bypassable with an unquoted `;` / `&&` / `|`
+  (the SSH transport hands the command to the remote shell, so the
+  suffix ran on the Proxmox host as root). Commands are now parsed with
+  `shlex`, the structure `pct exec <vmid> -- <cmd>` is validated (vmid
+  numeric, `--` required), and the command is rebuilt with `shlex.join`
+  so metacharacters are quoted and cannot escape the container.
+- **Proxmox TLS certificate pinning** — the API client no longer
+  disables certificate verification (`CERT_NONE`). When a
+  `cert_fingerprint` (SHA-256, config or `PROXMOX_CERT_FINGERPRINT`
+  env) is set, the peer certificate MUST match it — ARP/DNS-spoofing
+  can no longer read the API token in transit. Without a pin, the
+  default verified context is used (self-signed certs fail loudly).
+- **Auth defaults to enabled** — a config without an `auth` block used
+  to mean "no login required" (every LAN visitor became admin). The
+  default is now `true`; opt out explicitly and bind to localhost.
+
+### Fixed
+
+- **`DEFAULT_PROXMOX_NODE` was the developer's node name** (`keller`).
+  Neutral default (`pve`) — every install must set its own node.
+- **Update backups live inside the install root** (`.pi-hub-backups/`)
+  instead of the parent directory — an install at `/app` used to write
+  to `/pi-hub-backups` (filesystem root) and fail the update.
+- **Asset download redirects capped at 5 hops** — a redirect loop can no
+  longer tie up a request thread indefinitely.
+
 ## [7.5.4] - 2026-08-17
 
 ### Changed

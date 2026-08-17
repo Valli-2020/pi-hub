@@ -22,7 +22,8 @@ SECRETS_PATH = os.path.join(_REPO_ROOT, "secrets.json")
 
 # ── Defaults ─────────────────────────────────────────────────────────────────
 DEFAULT_PORT = 8898
-DEFAULT_PROXMOX_NODE = "keller"
+# Neutral default — every install must set its own node name in config.
+DEFAULT_PROXMOX_NODE = "pve"
 DEFAULT_PROXMOX_SSH_USER = "root"
 
 Host = Dict[str, Any]
@@ -218,7 +219,7 @@ def proxmox_host(instance_id: str = "") -> str:
 
 
 def proxmox_node(instance_id: str = "") -> str:
-    """Return the instance's node name (default 'keller')."""
+    """Return the instance's node name (config-set, neutral default)."""
     return _instance_by_id(instance_id).get("node", DEFAULT_PROXMOX_NODE)
 
 
@@ -497,10 +498,16 @@ def admin_config() -> Dict[str, Any]:
 # ── Auth config (v6) ─────────────────────────────────────────────────────────
 
 def auth_config() -> Dict[str, Any]:
-    """Return the auth sub-dict (default: disabled — backward compatible)."""
+    """Return the auth sub-dict (default: enabled)."""
     return get_config().get("auth", {}) or {}
 
 
 def auth_enabled() -> bool:
-    """True when user/password auth is required for the API."""
-    return bool(auth_config().get("enabled", False))
+    """True when user/password auth is required for the API.
+
+    Default is TRUE — a hub that controls power on LAN machines must
+    not be open to every network visitor just because config.json
+    lacks the ``auth`` key.  Opt out explicitly with
+    ``"auth": {"enabled": false}`` (and bind to localhost).
+    """
+    return bool(auth_config().get("enabled", True))

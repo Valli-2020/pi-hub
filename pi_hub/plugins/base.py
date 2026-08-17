@@ -325,10 +325,16 @@ class PluginContext:
     def ssh_cmd(self, host_id: str, command: str, timeout: int = 1800) -> dict:
         """Run a command via SSH on a *registry host* (needs ``ssh.execute``).
 
-        ``command`` must start with an allowlisted prefix — currently
-        ``pct exec`` (Proxmox container management).  This is the
-        capability boundary for plugins that manage containers (e.g. an
-        update-all plugin): raw shell access is never granted.
+        Only ``pct exec <vmid> -- <container command>`` is allowed (the
+        capability boundary for plugins that manage containers — e.g. an
+        update-all plugin).  Raw shell access on the Proxmox host is never
+        granted.
+
+        The command is parsed with :mod:`shlex` and rebuilt with
+        ``shlex.join``: a prefix check alone is insufficient, because the
+        SSH transport hands the string to the *remote shell*, so an
+        unquoted ``;`` / ``&&`` / ``|`` after the prefix would escape the
+        allowlist and run on the Proxmox host as root.
 
         ``timeout`` is the SSH timeout in seconds.  The default is long
         (30 min) because ``pct exec`` commands such as ``apt-get upgrade``
@@ -347,12 +353,30 @@ class PluginContext:
         host = find_host_by_id(host_id)
         if not host:
             return {"ok": False, "output": "unknown host", "code": 1}
+
+        import shlex
         cmd = str(command or "").strip()
-        if not cmd.startswith("pct exec "):
-            return {"ok": False,
-                    "output": "command not allowed (only 'pct exec ...')",
+        try:
+            parts = shlex.split(cmd)
+        except ValueError:
+            return {"ok": False, "output": "command not allowed (unbalanced quotes)",
                     "code": 1}
-        res = ssh_result(host, cmd, timeout=timeout)
+        # Structure: pct exec <vmid> -- <container command>
+        if len(parts) < 4 or parts[0] != "pct" or parts[1] != "exec":
+            return {"ok": False,
+                    "output": "command not allowed (only 'pct exec <vmid> -- ...')",
+                    "code": 1}
+        if not parts[2].isdigit() or not (100 <= int(parts[2]) <= 999999):
+            return {"ok": False, "output": "command not allowed (invalid vmid)",
+                    "code": 1}
+        if parts[3] != "--":
+            return {"ok": False, "output": "command not allowed (missing '--')",
+                    "code": 1}
+        # Rebuild with shlex.join: tokens containing shell metacharacters
+        # (;, &&, |, $, backticks, redirects) get re-quoted, so the remote
+        # shell cannot interpret them outside the container command.
+        safe_cmd = shlex.join(parts)
+        res = ssh_result(host, safe_cmd, timeout=timeout)
         if res["returncode"] is None:
             return {"ok": False, "output": res["stderr"] or "ssh failed",
                     "code": 1}

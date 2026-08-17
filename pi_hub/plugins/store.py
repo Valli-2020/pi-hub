@@ -254,7 +254,12 @@ def _gh_asset(owner: str, repo: str, asset_id: int) -> Tuple[bytes, str | None]:
     try:
         req = urllib.request.Request(url, headers=headers)
         r = opener.open(req, timeout=TIMEOUT)
+        hops = 0
         while r.status in (301, 302, 303, 307, 308):
+            hops += 1
+            if hops > 5:                 # redirect loop — give up
+                r.close()
+                return b"", "too many redirects"
             loc = r.headers.get("Location", "")
             if not loc:
                 break

@@ -17,7 +17,11 @@ S4
 
 from __future__ import annotations
 
+import hashlib
+import http.client
 import json
+import os
+import socket
 import ssl
 import threading
 import time
@@ -41,15 +45,131 @@ _BACKOFF_SEQUENCE: tuple[float, ...] = (5.0, 10.0, 30.0, 60.0)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# SSL context — self-signed LAN certificate
+# SSL context — self-signed LAN certificate with optional pinning
 # ═══════════════════════════════════════════════════════════════════════════════
 
-# TODO: Pin certificate fingerprint instead of CERT_NONE for LAN security.
-def _ssl_context() -> ssl.SSLContext:
-    ctx = ssl.create_default_context()
-    ctx.check_hostname = False
-    ctx.verify_mode = ssl.CERT_NONE
-    return ctx
+# Optional pin: SHA-256 fingerprint of the Proxmox TLS certificate
+# (hex, colons optional).  When set, the peer certificate MUST match —
+# MITM/ARP-spoofing can otherwise read the API token in cleartext.
+# Source: env PROXMOX_CERT_FINGERPRINT, else config proxmox[].cert_fingerprint.
+_fingerprint_cache: Dict[str, str] = {}
+
+
+def _pinned_fingerprint(instance_id: str = "") -> str:
+    """Return the configured cert fingerprint for *instance_id* (or '')."""
+    env = os.environ.get("PROXMOX_CERT_FINGERPRINT", "").strip().lower()
+    if env:
+        return env.replace(":", "")
+    if instance_id not in _fingerprint_cache:
+        fp = ""
+        try:
+            from pi_hub.config import get_config
+            pm = get_config().get("proxmox", [])
+            if isinstance(pm, list):
+                for i in pm:
+                    if i.get("id") == instance_id:
+                        fp = str(i.get("cert_fingerprint") or "").strip().lower()
+                        break
+            elif isinstance(pm, dict):
+                fp = str(pm.get("cert_fingerprint") or "").strip().lower()
+        except Exception:
+            fp = ""
+        _fingerprint_cache[instance_id] = fp.replace(":", "")
+    return _fingerprint_cache[instance_id]
+
+
+def _ssl_context(instance_id: str = "") -> ssl.SSLContext:
+    """SSL context for Proxmox API calls.
+
+    With a configured fingerprint, the real pin check happens in
+    :class:`_PinnedHTTPSConnection`; this context is then unused for the
+    handshake (see :func:`_open`).  Without a fingerprint, the default
+    verified context (hostname + CA chain) is used — self-signed LAN
+    certs fail loudly instead of silently downgrading (no more CERT_NONE).
+    """
+    if _pinned_fingerprint(instance_id):
+        return _PinnedContext(instance_id)
+    return ssl.create_default_context()
+
+
+class _PinnedContext:
+    """Marker context: signals :func:`_open` to use pinning."""
+
+    def __init__(self, instance_id: str):
+        self.instance_id = instance_id
+
+
+class _PinnedHTTPSConnection(http.client.HTTPSConnection):
+    """HTTPSConnection that pins the peer certificate's SHA-256.
+
+    ``connect()`` performs the TLS handshake with verification disabled,
+    then compares the presented certificate's fingerprint against the
+    configured pin and refuses to proceed on mismatch.  This makes
+    ARP/DNS-spoofing useless even with a self-signed LAN cert.
+    """
+
+    def __init__(self, host, port=None, timeout=None, fingerprint: str = ""):
+        super().__init__(host, port, timeout=timeout)
+        self._pin = fingerprint
+
+    def connect(self):
+        tls = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+        tls.check_hostname = False
+        tls.verify_mode = ssl.CERT_NONE
+        sock = socket.create_connection((self.host, self.port), self.timeout)
+        try:
+            self.sock = tls.wrap_socket(sock, server_hostname=self.host)
+            der = self.sock.getpeercert(binary_form=True)
+            if not der:
+                raise ssl.SSLError("no peer certificate presented")
+            digest = hashlib.sha256(der).hexdigest()
+            if digest != self._pin:
+                raise ssl.SSLError(
+                    f"certificate fingerprint mismatch "
+                    f"(expected {self._pin[:16]}…, got {digest[:16]}…)")
+        except Exception:
+            sock.close()
+            raise
+
+
+class _PinnedHTTPSHandler(urllib.request.HTTPSHandler):
+    """URL-opener handler that routes to pinned connections."""
+
+    def __init__(self, fingerprint: str):
+        super().__init__()
+        self._pin = fingerprint
+
+    def https_open(self, req):
+        from urllib.parse import urlsplit
+        parts = urlsplit(req.full_url)
+        host = parts.hostname
+        port = parts.port or 8006
+        # do_open calls http_class(host) — bind everything else via
+        # closure so the pinned connection is constructed exactly once.
+        def make_conn(h=None, fp=self._pin, **kw):
+            return _PinnedHTTPSConnection(host, port, timeout=8.0,
+                                          fingerprint=fp)
+        return self.do_open(make_conn, req)
+
+
+_opener_cache: Dict[str, urllib.request.OpenerDirector] = {}
+
+
+def _open(url: str, token: str, timeout: float, instance_id: str = "",
+          data: Optional[bytes] = None) -> Any:
+    """Open *url* with the right TLS mode (pinned / verified)."""
+    fp = _pinned_fingerprint(instance_id)
+    headers = {"Authorization": token}
+    if data is not None:
+        headers["Content-Type"] = "application/json"
+    req = urllib.request.Request(url, data=data, headers=headers)
+    if fp:
+        if fp not in _opener_cache:
+            _opener_cache[fp] = urllib.request.build_opener(
+                _PinnedHTTPSHandler(fp))
+        return _opener_cache[fp].open(req, timeout=timeout)
+    return urllib.request.urlopen(req, timeout=timeout,
+                                  context=ssl.create_default_context())
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -139,9 +259,7 @@ def _api_get(instance_id: str, path: str) -> Dict[str, Any]:
     url = f"https://{host}:8006{path}"
     req = urllib.request.Request(url, headers={"Authorization": token})
     try:
-        with urllib.request.urlopen(
-            req, timeout=REQUEST_TIMEOUT, context=_ssl_context()
-        ) as r:
+        with _open(url, token, REQUEST_TIMEOUT, instance_id) as r:
             return json.loads(r.read().decode())
     except Exception as exc:
         err = str(exc)
@@ -150,7 +268,7 @@ def _api_get(instance_id: str, path: str) -> Dict[str, Any]:
             for kw in ("timed out", "Name or service", "Connection",
                        "refused", "getaddrinfo")
         ):
-            err = "Proxmox unreachable - keller is offline"
+            err = "Proxmox unreachable"
         raise RuntimeError(err) from exc
 
 
@@ -168,9 +286,7 @@ def _api_post(instance_id: str, path: str) -> Dict[str, Any]:
         headers={"Authorization": token, "Content-Type": "application/json"},
     )
     try:
-        with urllib.request.urlopen(
-            req, timeout=REQUEST_TIMEOUT, context=_ssl_context()
-        ) as r:
+        with _open(url, token, REQUEST_TIMEOUT, instance_id, data=b"{}") as r:
             return json.loads(r.read().decode())
     except Exception as exc:
         err = str(exc)
@@ -179,7 +295,7 @@ def _api_post(instance_id: str, path: str) -> Dict[str, Any]:
             for kw in ("timed out", "Name or service", "Connection",
                        "refused", "getaddrinfo")
         ):
-            err = "Proxmox unreachable - keller is offline"
+            err = "Proxmox unreachable"
         raise RuntimeError(err) from exc
 
 

@@ -75,7 +75,7 @@ Update flow: download release tarball → verify (allowlist extraction,
 version parity, compile check, completeness check) → backup current
 install → atomic swap → automatic service restart → page reloads on the
 new version. Config, users, sessions, secrets and the icon set are never
-touched; installs are backed up to `pi-hub-backups/` (last 3 kept).
+touched; installs are backed up to `.pi-hub-backups/` (last 3 kept).
 
 **The update mechanism lives in core** (`pi_hub/updater.py`) — no plugin
 dependency, a plugin failure can never break the update path.
@@ -147,7 +147,7 @@ Browser → ThreadingHTTPServer (:8898)
 | SSH fails | Redeploy key: `ssh-keygen -f ~/.ssh/known_hosts -R IP` |
 | Windows SSH times out | `Set-Service sshd -StartupType Automatic` + firewall rule |
 | Proxmox table empty | Check token in `secrets.json` and `enabled: true` on the instance |
-| Update fails | Check Settings → Update card for the error; backups in `pi-hub-backups/` |
+| Update fails | Check Settings → Update card for the error; backups in `.pi-hub-backups/` |
 
 ## License
 
