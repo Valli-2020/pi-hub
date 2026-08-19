@@ -157,6 +157,13 @@ def _handle_start_windows(host_id: str) -> Response:
     linux = config.find_host_by_id(host_id)
     if not linux or linux.get("type") != "linux" or not linux.get("dual_boot_peer"):
         return {"error": "Not a dual-boot host"}, 400
+    # C2 (review 2026-08-18): the WOL step needs the MAC; without it the
+    # background task died on KeyError and left the UI spinning on
+    # "running" for TASK_EXPIRY_S.  Reject up front, like the Debian path
+    # already did.
+    if not (linux.get("mac") or "").strip():
+        return {"success": False,
+                "error": "no MAC configured for this host — cannot wake it"}, 400
     tasks.start_boot_windows(linux)
     return {
         "success": True,
@@ -770,15 +777,15 @@ def handle_post(path: str, params: Params, body: Dict[str, Any],
             return {"error": "Forbidden"}, 403
         if auth.users_state() not in ("missing", "empty"):
             return {"error": "Forbidden"}, 403
-        if not auth.check_rate_limit(ip):
-            return {"error": "Too many attempts, try again later"}, 429
         username = (body.get("username") if isinstance(body, dict) else "") or ""
         password = (body.get("password") if isinstance(body, dict) else "") or ""
+        if not auth.check_rate_limit(username, ip):
+            return {"error": "Too many attempts, try again later"}, 429
         res = auth.bootstrap_admin(username, password)
         if not res["ok"]:
-            auth.record_failure(ip)
+            auth.record_failure(username, ip)
             return {"error": res["error"]}, 400
-        auth.record_success(ip)
+        auth.record_success(username, ip)
         token = auth.issue_session(username, "admin")
         return {"token": token, "user": {
             "username": username, "role": "admin", "caps": {},
@@ -789,13 +796,13 @@ def handle_post(path: str, params: Params, body: Dict[str, Any],
         username = (body.get("username") if isinstance(body, dict) else "") or ""
         password = (body.get("password") if isinstance(body, dict) else "") or ""
         username = username.strip()
-        if not auth.check_rate_limit(ip):
+        if not auth.check_rate_limit(username, ip):
             return {"error": "Too many attempts, try again later"}, 429
         user = auth.authenticate(username, password)
         if not user:
-            auth.record_failure(ip)
+            auth.record_failure(username, ip)
             return {"error": "Invalid credentials"}, 401
-        auth.record_success(ip)
+        auth.record_success(username, ip)
         token = auth.issue_session(username, user["role"])
         return {"token": token, "user": {
             "username": username, "role": user["role"],

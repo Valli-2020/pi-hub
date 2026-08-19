@@ -85,12 +85,12 @@ def update_all_handler(self, body: dict | None = None, **kw: Any) -> tuple[Any, 
 
 ## 3. Background tasks
 
-Long-running work runs in daemon threads, pollable via the task store:
+Long-running work runs in daemon threads, pollable via the task store.
+`ctx.run_task()` is the ONLY way to start work — `get_tasks()` /
+`TaskDef` are read by the manager but their `fn` is NEVER invoked, so
+the declarative mechanism is inert; do not rely on it.
 
 ```python
-def get_tasks(self) -> list[TaskDef]:
-    return []
-
 # from any handler:
 def update_all_handler(self, **kw: Any) -> tuple[Any, int]:
     self.ctx.set_task_status("update-all", "running", "starting")
@@ -151,6 +151,10 @@ def get_ui(self) -> list[Any]:
 - Action buttons POST to `/api/plugin/<name>/<action-id>` — register a
   matching `RouteDef` for each action.
 - Keep payloads small (the tab polls constantly).
+- **NOT implemented:** `CardUIDef` (settings-page cards) is not rendered
+  by the frontend yet, and `ActionDef.caps` is not filtered client-side —
+  the action buttons are shown to every authenticated user.  Only
+  `TabUIDef` is a live surface today.
 
 ---
 
@@ -173,9 +177,9 @@ that calls a method without declaring the capability gets a
 | `ssh_cmd(host_id, command)` | `ssh.execute` | **Allowlisted** SSH: only `pct exec …` (container management) |
 | `wake_host(host_id)` | `hosts.wake` | WOL magic packet |
 | `proxmox_action(instance_id, vmid, action)` | `proxmox.control` | Start/stop/reboot containers |
-| `run_task(name, fn)` | — | Start a background task |
+| `run_task(name, fn)` | — | Start a background task (the ONLY task mechanism) |
 | `set_task_status` / `get_task_status` | — | Task progress store |
-| `toast(message, kind)` | — | UI toast (info/warn/error/success) |
+| `toast(message, kind)` | — | UI toast (info/warn/error/success) — **buffered, not yet surfaced in the UI** |
 | `register_static(url_path, file_path)` | — | Serve a file from `static/` |
 | `request_restart(tag)` | — | Ask the core to restart (systemd picks up) |
 
@@ -187,15 +191,19 @@ model.
 
 ## 6. Events (optional)
 
+**NOT IMPLEMENTED** — the hooks below are described for forward
+compatibility but the core currently never calls them.  Do not build
+against them yet; they may be removed or change signature.
+
 ```python
 def on_host_state_change(self, host_id: str, new_state: str) -> None:
-    """Called by the core poller when a host goes online/offline."""
+    """Not called yet — reserved."""
 
 def on_scan_complete(self, results: dict) -> None:
-    """Called when the service scanner finishes a scan."""
+    """Not called yet — reserved."""
 
 def migrate_config(self, old_version: str, config: dict) -> dict:
-    """Migrate stored config from an older plugin version."""
+    """Not called yet — reserved."""
 ```
 
 ---
@@ -227,6 +235,10 @@ def load(self, ctx: PluginContext) -> None:
 
 The path is validated against escaping the plugin directory; content
 types are allowlisted (never `text/html`).
+
+**Note:** `/plugin-static/*` requires an `Authorization` header, so a
+plain `<script src="/plugin-static/...">` tag does NOT work — fetch the
+asset with the token and inject it, or inline the code.
 
 ---
 

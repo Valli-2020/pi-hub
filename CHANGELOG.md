@@ -3,6 +3,90 @@
 All notable changes to Pi Hub are documented here. Every release ships a
 changelog entry AND matching GitHub release notes.
 
+## [7.6.1] - 2026-08-19
+
+Fixes from the 2026-08-18 review of the 7.6.1 fork (review doc outside the
+repo; A/B/C/D/E/F ids refer to its sections). Every item was verified
+live against a running instance where applicable.
+
+### Security
+
+- **Login lockout is per-username, not per-IP (B3).** Any valid account
+  could previously reset another account's failure counter by logging in
+  from the same IP — `admin` guessing could be retried forever. A
+  successful login now clears only its own username's counter.
+- **A `null` request body can no longer park a handler thread (B1).**
+  `json.loads(b"null")` returned `None`, the same value used as the
+  "413 already sent" signal — a 4-byte POST got no response and hung the
+  connection until the client gave up, with no auth required. Rejection
+  now uses a dedicated sentinel, and handlers have a 30 s socket timeout
+  so an announced-but-never-delivered body can't hold a thread forever.
+- **GET bodies are drained (B2).** With HTTP/1.1 keep-alive a GET body
+  stayed in the buffer and was parsed as the next request line — a
+  request-smuggling primitive behind the planned Pangolin reverse proxy.
+  `do_GET`/`do_DELETE` now drain or close on oversized/odd bodies.
+- **Plugin tab icon_svg is sanitized (E1).** It was the only plugin
+  payload field inserted as raw markup (`<img onerror>` fired; CSP has
+  `'unsafe-inline'`). Icons now pass through an SVG allowlist sanitizer
+  that strips `on*` attributes and `javascript:`/`data:` hrefs.
+- **Plugin tab ids are escaped (E2).** The id landed unescaped in three
+  attributes and two selector interpolations.
+
+### Fixed
+
+- **Plugin store downloads work again (A1).** `_NoRedirect` makes urllib
+  RAISE `HTTPError` on 3xx — the manual redirect loop treated that as a
+  response and never ran; every asset fetch ended as `GitHub HTTP 302`,
+  so no plugin could be listed or installed. `HTTPError` IS a response
+  object; the chain is now walked per-hop with a redirect cap. (The
+  fork's own "fix" for this was also broken — verified empirically.)
+- **MAC removal from a host works again (A2).** Update validation
+  contradicted the create path; `"mac": ""` 400'd and a mistaken MAC
+  stayed forever with a live wake button.
+- **v6→v7 migration no longer NameErrors (C1).** A dangling reference to
+  the removed `DEFAULT_PROXMOX_NODE` crashed config load (→ fail-closed
+  stub → every route 503) for v6 installs without a `node`.
+- **Dual-boot start without a MAC fails cleanly (C2).** `POST
+  /api/hosts/<id>/start/windows` answered 200, then the background task
+  died on `KeyError: 'mac'` and the UI spun on "running" for an hour.
+  Both boot sequences now guard the MAC; the route rejects with 400.
+- **Backup pruning only touches the updater's own dirs (C3).** With
+  `BACKUP_ROOT` on a NAS the "keep the 3 highest" rmtree could delete
+  arbitrary neighbor directories; `ignore_errors` hid the failures.
+- **dockge-ssh scanner works (C4).** The `find` parens were unquoted for
+  the remote shell (syntax error → empty result, indistinguishable from
+  "nothing found"); `StrictHostKeyChecking` is now set.
+- **Plugin updates preserve the plugin's config.json (D1).** The swap
+  deleted the old dir before replacing it, wiping stored credentials on
+  every store update (e.g. Bambuddy password). The old tree is parked
+  until the new one is in place, config.json is restored, `disable()`
+  failures abort, and a failed move rolls the old version back.
+- **Tar-bomb guard runs before memory is exhausted (D2).**
+  `tf.getmembers()` materialized the full member list; a crafted archive
+  with hundreds of thousands of members burned memory/CPU while holding
+  the install lock. Extraction now streams with a 10 000-member cap.
+- **`ctx.ssh_action()` actually acts (D3).** It passed the host DICT to
+  `hosts.ssh_action(host_id, ...)` — the lookup always failed, so every
+  call returned a truthy `{"success": False}` while nothing was sent.
+- **`ctx.get_hosts()` / `get_services()` no longer hand out the live
+  config (D4).** Plugin writes mutated the module cache; both now return
+  deep copies.
+- **Plugin `name` must match its directory (D5).** A plugin naming
+  itself differently could hijack foreign static registrations and task
+  status; PLUGINS.md required the match, nothing enforced it.
+- **Unload actually stops plugin background work (D6).** Threads that
+  ignore `thread_cancel()` kept running as daemons with a fully
+  functional context after disable/uninstall. The context is now marked
+  dead on unload (every ctx method raises), and the module is dropped
+  from `sys.modules` so a reinstall loads fresh code.
+- **Scan candidates can no longer be mis-added (E3).** Checkbox indices
+  restarted per group while the apply handler indexed the global list —
+  with both groups populated, checking one row added another.
+- **`CardUIDef` serializes its title/content (F).** The generic UI
+  serializer dropped them; PLUGINS.md now honestly marks the
+  not-yet-implemented surfaces (`TaskDef`/`get_tasks`, cards, action
+  caps, toast surfacing, auth-header-only plugin static).
+
 ## [7.6.0] - 2026-08-17
 
 Port of the findings from the 7.6.0 hardening review (F-xx ids refer to

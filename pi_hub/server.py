@@ -24,6 +24,12 @@ from urllib.parse import parse_qs, urlparse
 from pi_hub import config
 from pi_hub import routes
 
+# B1 (review 2026-08-18): sentinel for "413 already sent, abort" — distinct
+# from None because ``json.loads(b"null")`` is also None and a literal
+# ``null`` body must not be mistaken for a rejected request (that left the
+# connection hanging with no response ever written).
+_BODY_REJECTED = object()
+
 # ── Paths ────────────────────────────────────────────────────────────────────
 _HERE = _os.path.dirname(_os.path.abspath(__file__))
 _WEB_DIR = _os.path.join(_os.path.dirname(_HERE), "web")
@@ -147,6 +153,10 @@ class Handler(BaseHTTPRequestHandler):
     """
 
     protocol_version = "HTTP/1.1"  # PERF B11 — connection reuse
+    # B1 (review 2026-08-18): a client that sends Content-Length but never
+    # delivers the body must not park a handler thread forever — socketserver
+    # only applies a timeout when the handler class defines one.
+    timeout = 30
 
     # ── Auth guard (v6) ──────────────────────────────────────────────────
 
@@ -201,6 +211,11 @@ class Handler(BaseHTTPRequestHandler):
 
         Returns None when the request is rejected (413) — the caller must
         stop processing.  Empty bodies return {}.
+
+        B1 (review 2026-08-18): the rejection signal is a module sentinel
+        (``_BODY_REJECTED``), NOT None — ``json.loads(b"null")`` is also
+        None, and treating a literal ``null`` body as "413 already sent"
+        left the connection hanging with no response ever written.
         """
         try:
             cl = int(self.headers.get("Content-Length", 0) or 0)
@@ -209,7 +224,7 @@ class Handler(BaseHTTPRequestHandler):
         if "Transfer-Encoding" in self.headers or cl < 0 or cl > 65536:
             self.close_connection = True            # don't reuse a desynced connection
             self._json({"error": "Payload too large"}, 413)
-            return None
+            return _BODY_REJECTED
         if cl == 0:
             return {}
         try:
@@ -217,12 +232,45 @@ class Handler(BaseHTTPRequestHandler):
         except (_json.JSONDecodeError, ValueError):
             return {}
 
+    def _drain_body(self) -> bool:
+        """B2 (review 2026-08-18): read + discard a request body on methods
+        that don't use one (GET, DELETE), so the connection stays in sync
+        on HTTP/1.1 keep-alive.  A leftover body would otherwise be parsed
+        as the next request line (request-smuggling primitive behind a
+        connection-pooling reverse proxy).  Oversized bodies close the
+        connection instead of reading unbounded data.
+
+        Returns True when the request may continue, False when the caller
+        must abort WITHOUT writing a response (the connection is being
+        closed).  The caller must NOT gate on ``self.close_connection``
+        alone — it is already True for plain ``Connection: close`` /
+        HTTP/1.0 requests, where a response is still expected."""
+        try:
+            cl = int(self.headers.get("Content-Length", 0) or 0)
+        except ValueError:
+            self.close_connection = True
+            return False
+        if cl <= 0:
+            return True
+        if cl > 65536 or "Transfer-Encoding" in self.headers:
+            self.close_connection = True
+            return False
+        try:
+            self.rfile.read(cl)
+        except OSError:
+            self.close_connection = True
+            return False
+        return True
+
     # ── GET ───────────────────────────────────────────────────────────────
 
     def do_GET(self) -> None:
         parsed = urlparse(self.path)
         path = parsed.path.rstrip("/") or "/"
         params = parse_qs(parsed.query)
+
+        # B2: a GET with a body must not desync keep-alive — drain first.
+        self._drain_body()
 
         # SECURITY S6 — serve statics ONLY from the hardcoded allowlist
         if path in STATIC_ALLOWLIST:
@@ -277,7 +325,7 @@ class Handler(BaseHTTPRequestHandler):
         params = parse_qs(parsed.query)
 
         body = self._read_body()
-        if body is None:
+        if body is _BODY_REJECTED:
             return
 
         if path.startswith("/api/"):
@@ -302,15 +350,12 @@ class Handler(BaseHTTPRequestHandler):
         params = parse_qs(parsed.query)
 
         # Drain any request body so keep-alive doesn't desync (HTTP/1.1).
-        try:
-            cl = int(self.headers.get("Content-Length", 0) or 0)
-        except ValueError:
-            cl = 0
-        if cl > 0 and cl <= 65536:
-            self.rfile.read(cl)
-        elif cl > 65536:
-            self.close_connection = True
-            self._json({"error": "Payload too large"}, 413)
+        # B2: an unparsable Content-Length previously fell back to 0 and
+        # left the body in the buffer — close the connection instead.
+        # Gate on the DRAIN OUTCOME, not on self.close_connection (which
+        # is already True for Connection: close / HTTP/1.0 requests that
+        # still expect a response).
+        if not self._drain_body():
             return
 
         if path.startswith("/api/"):

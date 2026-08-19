@@ -84,7 +84,14 @@ def boot_into_windows_sequence(linux_host: Host) -> None:
     tname = TASK_BOOT_WINDOWS
     set_task_status(tname, "running", "WOL sent, waiting for Debian...")
 
-    net.send_wol(linux_host["mac"], linux_host.get("ip", ""))
+    # C2 (review 2026-08-18): defense in depth — the route rejects before
+    # launching, but the sequence itself must not KeyError on a MAC-less
+    # host either (direct callers / future routes).
+    mac = (linux_host.get("mac") or "").strip()
+    if not mac:
+        set_task_status(tname, "error", "no MAC configured for this host")
+        return
+    net.send_wol(mac, linux_host.get("ip", ""))
 
     # Wait for Debian on TCP port 22 (SSH) — V2: icmp=False
     if not _wait_for_ping(linux_host["ip"], BOOT_PING_TIMEOUT_S,
@@ -142,7 +149,11 @@ def boot_into_debian_sequence(linux_host: Host, win_host: Host) -> None:
 
     time.sleep(WOL_SETTLE_DELAY_S)
     set_task_status(tname, "running", "WOL sent, waiting for Debian...")
-    net.send_wol(linux_host["mac"], linux_host.get("ip", ""))
+    mac = (linux_host.get("mac") or "").strip()
+    if not mac:
+        set_task_status(tname, "error", "no MAC configured for this host")
+        return
+    net.send_wol(mac, linux_host.get("ip", ""))
 
     # Wait for Debian on TCP port 22 (SSH) — V2: icmp=False
     if _wait_for_ping(linux_host["ip"], BOOT_PING_TIMEOUT_S,

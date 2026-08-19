@@ -22,6 +22,7 @@ import os
 import re
 import threading
 import time
+from copy import deepcopy as _deepcopy
 from typing import Any, Callable, Dict, List, Optional
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -179,17 +180,15 @@ class Plugin(abc.ABC):
     # ── Optional event hooks ────────────────────────────────────────────────
 
     def on_host_state_change(self, host_id: str, new_state: str) -> None:
-        """Called by the core poller when a host's online/offline state
-        changes.  Optional — override to react."""
+        """Reserved — NOT called by the core (see PLUGINS.md §6)."""
         pass
 
     def on_scan_complete(self, results: dict) -> None:
-        """Called by the service scanner when a scan completes.  Optional."""
+        """Reserved — NOT called by the core (see PLUGINS.md §6)."""
         pass
 
     def migrate_config(self, old_version: str, config: dict) -> dict:
-        """Migrate a stored config dict from ``old_version`` to the
-        plugin's current version.  Return the updated dict."""
+        """Reserved — NOT called by the core (see PLUGINS.md §6)."""
         return config
 
 
@@ -249,6 +248,7 @@ class PluginContext:
         self._caps = set(capabilities)
         self._config: dict = {}
         self._threads: list[_PluginThread] = []
+        self._unloaded = False              # D6: set by unload(); see _check_alive
         self._config_path = os.path.join(plugin_dir, "config.json")
         self._load_config()
 
@@ -276,29 +276,48 @@ class PluginContext:
             os.replace(tmp, self._config_path)
 
     def _require_cap(self, cap: str) -> None:
+        self._check_alive()
         if cap not in self._caps:
             raise PermissionError(
                 f"Plugin '{self._plugin.name}' lacks capability '{cap}'"
             )
+
+    def _check_alive(self) -> None:
+        """D6 (review 2026-08-18): after unload() the context is DEAD.
+        A daemon thread that ignored ``thread_cancel()`` must not keep
+        driving the system through a fully functional ctx — every public
+        ctx method funnels through here and raises once the plugin was
+        unloaded."""
+        if self._unloaded:
+            raise RuntimeError(
+                f"Plugin '{self._plugin.name}' was unloaded — its context "
+                "is no longer usable")
 
     # ── Config (per-plugin, namespaced) ────────────────────────────────────
 
     def get_config(self) -> dict:
         """Return this plugin's config dict (mutable reference — save with
         :meth:`save_config` after editing)."""
+        self._check_alive()
         return self._config
 
     def save_config(self) -> None:
         """Atomically persist the plugin's config to ``config.json``."""
+        self._check_alive()
         self._save_config()
 
     # ── System reads (capability-gated) ────────────────────────────────────
 
     def get_hosts(self) -> list[dict]:
-        """Return all configured hosts (needs ``hosts.read``)."""
+        """Return all configured hosts (needs ``hosts.read``).
+
+        D4 (review 2026-08-18): returns a deep copy — the raw module
+        cache list was handed out, so a plugin write mutated the live
+        config (see get_services).
+        """
         self._require_cap("hosts.read")
         from pi_hub.config import get_hosts
-        return get_hosts()
+        return _deepcopy(get_hosts())
 
     def get_proxmox_containers(self, instance_id: str = "") -> dict:
         """Return Proxmox container list (needs ``proxmox.read``)."""
@@ -388,10 +407,16 @@ class PluginContext:
         return {"ok": res["ok"], "output": output, "code": res["returncode"]}
 
     def get_services(self) -> list[dict]:
-        """Return configured services (needs ``services.read``)."""
+        """Return configured services (needs ``services.read``).
+
+        D4 (review 2026-08-18): returns a deep copy — the raw module
+        cache list was handed out, so a plugin write mutated the live
+        config until the next mtime-triggered reload (never, on a stable
+        machine).
+        """
         self._require_cap("services.read")
         from pi_hub.config import get_config
-        return get_config().get("services", [])
+        return _deepcopy(get_config().get("services", []))
 
     def get_dockge_stacks(self) -> list[dict]:
         """Return Dockge stacks (needs ``dockge.read``)."""
@@ -404,14 +429,18 @@ class PluginContext:
     def ssh_action(self, host_id: str, action: str) -> bool:
         """Run a power action via SSH (needs ``ssh.execute``).  ``action``
         is validated against the same allowlist the core UI uses — no raw
-        command injection."""
+        command injection.
+
+        D3 (review 2026-08-18): ``hosts.ssh_action`` takes the host ID and
+        resolves it itself — passing the host DICT made the internal
+        ``find_host_by_id`` lookup always fail, so every call returned a
+        truthy ``{"success": False, ...}`` while nothing was ever sent.
+        The result is now a real bool derived from ``success``.
+        """
         self._require_cap("ssh.execute")
-        from pi_hub.config import find_host_by_id
-        from pi_hub.hosts import ssh_action
-        host = find_host_by_id(host_id)
-        if not host:
-            return False
-        return ssh_action(host, action)
+        from pi_hub.hosts import ssh_action as core_ssh_action
+        res = core_ssh_action(str(host_id or ""), str(action or ""))
+        return bool(res.get("success")) if isinstance(res, dict) else False
 
     def wake_host(self, host_id: str) -> bool:
         """Send a WOL magic packet (needs ``hosts.wake``)."""
@@ -435,6 +464,7 @@ class PluginContext:
         """Launch a background task in a daemon thread.  The thread is
         tracked so :meth:`Plugin.unload` can cancel it.  Task name is
         namespaced to this plugin."""
+        self._check_alive()
         full_name = f"plugin:{self._plugin.name}:{name}"
         t = _PluginThread(target=fn, name=full_name)
         self._threads.append(t)
@@ -443,12 +473,14 @@ class PluginContext:
     def set_task_status(self, name: str, status: str, message: str = "") -> None:
         """Update the status of a running task (polled via
         ``GET /api/task/plugin:<name>:<task>``)."""
+        self._check_alive()
         from pi_hub import tasks
         full_name = f"plugin:{self._plugin.name}:{name}"
         tasks.set_task_status(full_name, status, message)
 
     def get_task_status(self, name: str) -> Optional[dict]:
         """Return the last status of a task."""
+        self._check_alive()
         from pi_hub import tasks
         full_name = f"plugin:{self._plugin.name}:{name}"
         return tasks.get_task_status(full_name)
@@ -458,6 +490,7 @@ class PluginContext:
     def toast(self, message: str, kind: str = "info") -> None:
         """Push a toast to all connected UIs (stored in the global
         ``_PLUGINS_TOASTS`` buffer polled by the frontend)."""
+        self._check_alive()
         from pi_hub.plugins.manager import push_toast
         push_toast(self._plugin.name, message, kind)
 
@@ -466,6 +499,7 @@ class PluginContext:
 
         ``file_path`` must live inside the plugin's ``static/`` directory
         — path traversal is rejected."""
+        self._check_alive()
         from pi_hub.plugins.manager import register_plugin_static
         # Defer resolution to serve time so plugin_dir is known
         register_plugin_static(self._plugin.name, url_path, file_path, self._plugin_dir)
@@ -475,13 +509,21 @@ class PluginContext:
         update).  The actual restart is handled by the core's
         ``server.py`` which calls ``os._exit(0)`` — plugins can't do that
         directly without killing other plugins."""
+        self._check_alive()
         from pi_hub.plugins.manager import request_core_restart
         request_core_restart(tag)
 
     # ── Lifecycle ──────────────────────────────────────────────────────────
 
     def unload(self) -> None:
-        """Signal all plugin threads to stop and wait briefly."""
+        """Signal all plugin threads to stop and wait briefly.
+
+        D6 (review 2026-08-18): the context is marked DEAD FIRST so any
+        thread that ignores ``thread_cancel()`` and keeps running fails
+        on its next ctx call instead of acting with full capabilities
+        after uninstall/disable.
+        """
+        self._unloaded = True
         for t in self._threads:
             if hasattr(t, "_cancel"):
                 t._cancel.set()

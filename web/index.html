@@ -2037,10 +2037,50 @@ $('#plugins-list').addEventListener('click', e => {
 const plgTabTimers = {};
 const plgTabData = {};
 
+// E1 (review 2026-08-18): tab.icon_svg is the ONLY plugin payload field
+// inserted as markup (everything else passes through esc()).  Sanitize it:
+// keep only a safe SVG subset, drop event handlers and script-capable
+// elements.  Plugins already run as in-process Python, so this is
+// defense-in-depth — but it keeps the documented CSP (script-src
+// 'unsafe-inline') from being the last line of defense.
+const SVG_ALLOWED_TAGS = new Set(['svg','g','path','circle','rect','line',
+  'polyline','polygon','ellipse','defs','linearGradient','radialGradient',
+  'stop','title','desc','text','tspan','marker','symbol','use','clipPath',
+  'mask','filter','feGaussianBlur','feOffset','feBlend','feMerge','feMergeNode']);
+// Strip event handlers and script-capable URL attributes from one element.
+const SVG_BAD_ATTR = (n, v) =>
+  n.startsWith('on') ||
+  (n === 'href' || n === 'xlink:href') && /^\s*(javascript|data):/i.test(v);
+function sanitizeSvg(src){
+  if (typeof src !== 'string' || !src.trim()) return '';
+  const tpl = document.createElement('template');
+  tpl.innerHTML = src;
+  const svg = tpl.content.firstElementChild;
+  if (!svg || svg.tagName.toLowerCase() !== 'svg') return '';
+  const cleanAttrs = (node) => {
+    [...node.attributes].forEach(a => {
+      if (SVG_BAD_ATTR(a.name.toLowerCase(), a.value))
+        node.removeAttribute(a.name);
+    });
+  };
+  cleanAttrs(svg);   // E1 (Opus 5 verify): the ROOT svg's own attrs too
+  const walk = (node) => {
+    [...node.children].forEach(child => {
+      const tag = child.tagName.toLowerCase();
+      if (!SVG_ALLOWED_TAGS.has(tag)){ child.remove(); return; }
+      cleanAttrs(child);
+      walk(child);
+    });
+  };
+  walk(svg);
+  return svg.outerHTML;
+}
+
 function pluginTabHtml(id, label, content){
-  return '<div class="view" data-view="' + id + '" hidden>' +
-    '<div class="viewhead"><h2>' + esc(label) + '</h2><span class="sub" id="sub-' + id + '"></span></div>' +
-    '<div id="content-' + id + '">' + content + '</div></div>';
+  const safeId = esc(id);   // E2: id lands in 3 attributes — escape it
+  return '<div class="view" data-view="' + safeId + '" hidden>' +
+    '<div class="viewhead"><h2>' + esc(label) + '</h2><span class="sub" id="sub-' + safeId + '"></span></div>' +
+    '<div id="content-' + safeId + '">' + content + '</div></div>';
 }
 
 async function renderPluginTabs(){
@@ -2061,7 +2101,7 @@ async function renderPluginTabs(){
       const id = n.dataset.plgTab;
       if (!tabs.some(t => t.tab.id === id)){
         n.remove();
-        const v = $('.view[data-view="' + id + '"]');
+        const v = $('.view[data-view="' + esc(id) + '"]');
         if (v) v.remove();
         if (plgTabTimers[id]){ clearInterval(plgTabTimers[id]); delete plgTabTimers[id]; }
         if (S.view === id) showView('hosts');
@@ -2069,12 +2109,14 @@ async function renderPluginTabs(){
     });
     tabs.forEach(({ name, tab }) => {
       const id = tab.id;
-      if ($('#sidebar .nav-item[data-plg-tab="' + id + '"]')) return;  // already rendered
+      if ($('#sidebar .nav-item[data-plg-tab="' + esc(id) + '"]')) return;  // already rendered
       const btn = document.createElement('button');
       btn.className = 'nav-item';
       btn.dataset.plgTab = id;
       btn.dataset.go = id;
-      btn.innerHTML = (tab.icon_svg || '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M4 17 10 11 14 15 20 9"/><path d="M4 21h16"/></svg>') +
+      const svgIcon = sanitizeSvg(tab.icon_svg) ||
+        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M4 17 10 11 14 15 20 9"/><path d="M4 21h16"/></svg>';
+      btn.innerHTML = svgIcon +
         '<span>' + esc(tab.label || name) + '</span>';
       $('#sidebar').insertBefore(btn, $('#sidebar .navhint'));
       const section = document.createElement('section');
@@ -2353,15 +2395,15 @@ function paintScanResults(){
   let html = '<div class="scanwrap"><p class="hint">' + scanCands.length +
     ' candidate service(s) found — confirm the ones to add. nginx stream candidates need a name.</p>';
   if (dockge.length) {
-    html += '<p class="insthead">Dockge</p>' + dockge.map((c, i) =>
-      '<div class="scanrow"><input type="checkbox" data-sel="' + i + '" checked>' +
+    html += '<p class="insthead">Dockge</p>' + dockge.map((c) =>
+      '<div class="scanrow"><input type="checkbox" data-sel="' + scanCands.indexOf(c) + '" checked>' +
       '<b>' + esc(c.name || c.port) + '</b> <span class="meta">:' + c.port + ' on ' + esc(c.host || '') + '</span>' +
       '<span class="srcc">' + esc(c.source) + '</span></div>').join('');
   }
   if (nginx.length) {
-    html += '<p class="insthead">Nginx streams (name required)</p>' + nginx.map((c, i) =>
-      '<div class="scanrow"><input type="checkbox" data-sel="' + i + '">' +
-      '<input type="text" placeholder="name for port ' + c.port + '" data-sname="' + i + '">' +
+    html += '<p class="insthead">Nginx streams (name required)</p>' + nginx.map((c) =>
+      '<div class="scanrow"><input type="checkbox" data-sel="' + scanCands.indexOf(c) + '">' +
+      '<input type="text" placeholder="name for port ' + c.port + '" data-sname="' + scanCands.indexOf(c) + '">' +
       '<span class="meta">' + esc(c.target || '') + '</span><span class="srcc">' + esc(c.source) + '</span></div>').join('');
   }
   html += '<div class="btn-row" style="margin-top:10px">' +

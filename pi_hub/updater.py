@@ -545,13 +545,20 @@ def _swap(root: str, tag: str) -> str | None:
                 shutil.rmtree(os.path.join(dirpath, "__pycache__"))
                 dirnames.remove("__pycache__")
     shutil.rmtree(staging, ignore_errors=True)
+    # C3 (review 2026-08-18): only prune directories the updater itself
+    # created.  The backup name is ``<timestamp>-<pid>`` (see above); with
+    # BACKUP_ROOT pointing at a shared/NAS location, an unguarded
+    # "keep the 3 highest" rmtree would delete arbitrary neighbor
+    # directories.  ignore_errors=True is dropped so failures are visible.
     try:
         bdir = os.path.dirname(backup_dir)
         if os.path.isdir(bdir):
-            keep = sorted(os.listdir(bdir), reverse=True)[:3]
-            for name in os.listdir(bdir):
+            own = [n for n in os.listdir(bdir)
+                   if re.fullmatch(r"\d{8}-\d{6}-\d+", n)]
+            keep = set(sorted(own, reverse=True)[:3])
+            for name in own:
                 if name not in keep:
-                    shutil.rmtree(os.path.join(bdir, name), ignore_errors=True)
+                    shutil.rmtree(os.path.join(bdir, name))
     except OSError:
         pass
     return None

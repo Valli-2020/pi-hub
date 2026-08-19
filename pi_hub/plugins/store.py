@@ -50,7 +50,17 @@ MANIFEST_ASSET = "pihub-plugin.json"
 # Download / extraction limits (mirrors updater.py philosophy).
 MAX_TARBALL = 5 * 1024 * 1024        # compressed cap, read-loop enforced
 MAX_EXPANDED = 10 * 1024 * 1024      # extracted cap across all members
+# D2 (review 2026-08-18): a tarball with millions of tiny members would
+# materialize the full member list in memory via tf.getmembers() before a
+# single byte was written or the compile gate ran.  Iterate STREAMING and
+# hard-cap the member count — the gzip bomb gets cut off cheaply, while
+# _install_lock is still held.
+MAX_MEMBERS = 10000
 TIMEOUT = 8
+# Redirects are walked manually (to scrub credentials on cross-host hops);
+# without a hop limit a server that redirects in a circle would keep a
+# request thread busy forever.
+MAX_REDIRECTS = 5
 UA = "pi-hub-plugin-store/7.2"
 
 # Extraction allowlist — deny-by-default: NOTHING else is extracted.
@@ -251,29 +261,38 @@ def _gh_asset(owner: str, repo: str, asset_id: int) -> Tuple[bytes, str | None]:
     url = f"https://api.github.com/repos/{owner}/{repo}/releases/assets/{int(asset_id)}"
     cap = MAX_TARBALL + (1 << 20)          # allow a little slack over the cap
     opener = urllib.request.build_opener(_NoRedirect)
+    # _NoRedirect makes urllib RAISE HTTPError for 3xx instead of
+    # returning a response — and HTTPError IS a response object
+    # (status, headers, geturl(), close()).  Catch it on every hop and
+    # walk the redirect chain manually so credentials can be scrubbed
+    # cross-host.  Non-redirect errors (404/403/500) fall through to the
+    # outer handler unchanged.
     _REDIRECT_CODES = (301, 302, 303, 307, 308)
+
+    def _open(req):
+        try:
+            return opener.open(req, timeout=TIMEOUT)
+        except urllib.error.HTTPError as e:
+            if e.code in _REDIRECT_CODES:
+                return e
+            raise
+
     try:
         req = urllib.request.Request(url, headers=headers)
-        try:
-            r = opener.open(req, timeout=TIMEOUT)
-        except urllib.error.HTTPError as e:
-            if e.code not in _REDIRECT_CODES:
-                raise
-            r = e                      # first hop — loop below handles it
+        r = _open(req)
         hops = 0
-        # With _NoRedirect the opener RAISES HTTPError on 3xx instead of
-        # returning a response — catch redirects on the hop and re-issue
-        # manually so credentials can be scrubbed cross-host.
         while r.status in _REDIRECT_CODES:
-            loc = r.headers.get("Location", "")
-            r.close()
-            if not loc:
-                return b"", "redirect without Location"
             hops += 1
-            if hops > 5:                 # redirect loop — give up
+            if hops > MAX_REDIRECTS:         # redirect loop — give up
+                r.close()
                 return b"", "too many redirects"
+            loc = r.headers.get("Location", "")
+            if not loc:
+                r.close()
+                return b"", "redirect without Location"
             next_url = urllib.parse.urljoin(r.geturl(), loc)
             next_host = urllib.parse.urlsplit(next_url).netloc.lower()
+            r.close()
             if next_host == urllib.parse.urlsplit(url).netloc.lower():
                 req = urllib.request.Request(next_url, headers=headers)
             else:
@@ -281,13 +300,7 @@ def _gh_asset(owner: str, repo: str, asset_id: int) -> Tuple[bytes, str | None]:
                 safe = {k: v for k, v in headers.items()
                         if k.lower() != "authorization"}
                 req = urllib.request.Request(next_url, headers=safe)
-            try:
-                r = opener.open(req, timeout=TIMEOUT)
-            except urllib.error.HTTPError as e:
-                if e.code in _REDIRECT_CODES:
-                    r = e                      # another hop — loop continues
-                else:
-                    raise
+            r = _open(req)
         try:
             buf = bytearray()
             while True:
@@ -592,8 +605,19 @@ def _extract_member(tf: tarfile.TarFile, member: tarfile.TarInfo,
 
 
 def _find_in_archive(tf: tarfile.TarFile, dest_dir: str, budget: List[int]) -> str | None:
-    """Extract the plugin files from a tarball.  Returns error or None."""
-    for member in tf.getmembers():
+    """Extract the plugin files from a tarball.  Returns error or None.
+
+    D2 (review 2026-08-18): iterates the archive STREAMING (``for member
+    in tf``) instead of materializing ``tf.getmembers()``, and enforces
+    MAX_MEMBERS — a crafted archive with hundreds of thousands of
+    zero-byte members must fail here, before memory/CPU is exhausted,
+    not at the write cap.
+    """
+    count = 0
+    for member in tf:
+        count += 1
+        if count > MAX_MEMBERS:
+            return f"archive has too many members (>{MAX_MEMBERS})"
         _, err = _extract_member(tf, member, dest_dir, budget)
         if err:
             return err
@@ -684,15 +708,54 @@ def _install_locked(source_id: str, name: str, version: str) -> Tuple[bool, str]
                     return False, f"plugin does not compile: {e}"
 
     # 3. Swap into place — only now touch the live install (upgrade
-    #    path: disable old, move it aside, replace with the staged tree).
+    #    path: disable old, park it, replace with the staged tree).
+    parked = None
+    cfg_data = None
     if os.path.isdir(target_dir):
-        disable(name)
-        shutil.rmtree(target_dir, ignore_errors=True)
+        ok, why = disable(name)
+        if not ok:
+            shutil.rmtree(staging, ignore_errors=True)
+            return False, f"could not disable old version: {why}"
+        # D1 (review 2026-08-18): keep the OLD tree until the new one is
+        # in place (an os.replace failure below rolls the park back), and
+        # preserve the plugin's own config.json across the update — it was
+        # wiped by the rmtree-before-replace order.  A leftover park from
+        # a crashed earlier update is removed first, or os.replace fails
+        # with ENOTEMPTY and the upgrade dies with the plugin disabled.
+        parked = target_dir + ".old"
+        if os.path.lexists(parked):
+            shutil.rmtree(parked, ignore_errors=True)
+        try:
+            os.replace(target_dir, parked)
+        except OSError:
+            shutil.rmtree(staging, ignore_errors=True)
+            return False, "could not park old plugin version"
+        cfg_data = None
+        cfg_path = os.path.join(parked, "config.json")
+        try:
+            with open(cfg_path, "rb") as f:
+                cfg_data = f.read()
+        except OSError:
+            cfg_data = None              # no config to preserve
     try:
         os.replace(staging, target_dir)
     except OSError:
+        # Roll the previous version back so the plugin keeps working.
+        if parked and os.path.isdir(parked) and not os.path.isdir(target_dir):
+            try:
+                os.replace(parked, target_dir)
+            except OSError:
+                pass
         shutil.rmtree(staging, ignore_errors=True)
         return False, "could not move plugin into place"
+    if cfg_data is not None:
+        try:
+            with open(os.path.join(target_dir, "config.json"), "wb") as f:
+                f.write(cfg_data)
+        except OSError:
+            pass                      # best-effort: the update itself succeeded
+    if parked:
+        shutil.rmtree(parked, ignore_errors=True)
 
     # Mark the EXACT cached candidate as installed (multiple versions of
     # the same plugin can coexist in the cache — never flag them all).

@@ -26,6 +26,7 @@ import ssl
 import threading
 import time
 import urllib.request
+from copy import deepcopy
 from typing import Any, Dict, Optional
 
 from pi_hub.config import has_proxmox, proxmox_host, proxmox_instances, \
@@ -332,9 +333,12 @@ def _fetch_instance(instance_id: str) -> Dict[str, Any]:
             return cached
 
         # Positive cache: return fresh-enough container list.
+        # Opus 5 verify (2026-08-19): deep-copy — a shallow .copy() shares
+        # the `containers` list, so a caller mutating its own result
+        # (e.g. a plugin appending a row) poisoned the cache for everyone.
         ts = _containers_cache_ts.get(instance_id, 0.0)
         if instance_id in _containers_cache and (time.monotonic() - ts) < SUCCESS_TTL:
-            result = _containers_cache[instance_id].copy()
+            result = deepcopy(_containers_cache[instance_id])
             _assert_token_not_leaked(result, token)
             return result
 
@@ -362,7 +366,11 @@ def _fetch_instance(instance_id: str) -> Dict[str, Any]:
         result: Dict[str, Any] = {"success": True, "containers": containers}
 
         with _cache_lock:
-            _containers_cache[instance_id] = result
+            # Opus 5 re-verify (2026-08-19): cache a COPY — the caller
+            # below returns `result` directly; caching the same object
+            # would hand the next cache-hit reader a live reference to
+            # the very dict the previous caller still holds.
+            _containers_cache[instance_id] = deepcopy(result)
             _containers_cache_ts[instance_id] = time.monotonic()
             _record_success(instance_id)
     except Exception as exc:

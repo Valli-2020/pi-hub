@@ -54,7 +54,14 @@ def _normalize(cfg: Dict[str, Any]) -> Dict[str, Any]:
     """
     pm = cfg.get("proxmox")
     if isinstance(pm, dict) and pm.get("host"):
-        node = str(pm.get("node") or DEFAULT_PROXMOX_NODE)
+        # C1 (review 2026-08-18): the old DEFAULT_PROXMOX_NODE constant was
+        # removed deliberately (an unset node must surface as an explicit
+        # error, never be guessed — a wrong node shows "0 containers" and
+        # looks healthy).  The migration reference was left behind and
+        # NameError'd on every v6→v7 migration where `node` was missing.
+        # The instance id now falls back to the host, and node stays unset
+        # so proxmox_node() returns "" → callers refuse the request.
+        node = str(pm.get("node") or pm.get("host") or "")
         # keep the legacy `token` key: proxmox_token() still resolves it as
         # the deprecated config fallback (v6 installs without secrets.json
         # store the token here). It never leaves the server: public_config /

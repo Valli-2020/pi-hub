@@ -229,9 +229,16 @@ class PluginManager:
 
         # Instantiate and load
         plugin = plugin_cls()
-        # Override name from directory if not set
-        if not plugin.name:
-            plugin.name = name
+        # D5 (review 2026-08-18): the manager keys everything by the
+        # DIRECTORY name, but PluginContext addresses plugins by
+        # ``plugin.name``.  A plugin that names itself differently would
+        # hijack foreign static registrations and task status.  PLUGINS.md
+        # requires the name to match the directory — enforce it.
+        if plugin.name and plugin.name != name:
+            raise PluginLoadError(
+                f"plugin name '{plugin.name}' does not match directory "
+                f"'{name}' (PLUGINS.md: name must equal the directory name)")
+        plugin.name = name
         # Check core version compatibility
         self._check_core_version(plugin)
         # Build context with declared capabilities
@@ -277,6 +284,10 @@ class PluginManager:
         # under the same name must not inherit stale entries.
         for url in [u for u, (p, _f) in _static_map.items() if p == name]:
             del _static_map[url]
+        # D6 (review 2026-08-18): drop the module from sys.modules so a
+        # later reinstall loads a FRESH module instead of the stale one
+        # (and so the old module can be GC'd with its threads' references).
+        sys.modules.pop(f"pi_hub_plugins.{name}", None)
         loaded.status = "unloaded"
 
     # ── Route dispatch ─────────────────────────────────────────────────────
@@ -391,6 +402,16 @@ def _serialize_ui(ui_list: list) -> list[dict]:
     """Serialize UI descriptors to JSON-friendly dicts."""
     out = []
     for item in ui_list:
+        # F (review 2026-08-18): CardUIDef has no `id` — the generic
+        # branch dropped its title/content entirely.  Serialize it
+        # explicitly so cards render with their content.
+        if type(item).__name__ == "CardUIDef":
+            out.append({
+                "type": "CardUIDef",
+                "title": getattr(item, "title", ""),
+                "content_template": getattr(item, "content_template", ""),
+            })
+            continue
         if hasattr(item, "id"):  # TabUIDef or ActionDef-like
             out.append({
                 "type": type(item).__name__,

@@ -537,47 +537,65 @@ def sweep_sessions() -> None:
             _save_sessions(_sessions)
     # Also forget rate-limit entries that expired long ago (lazy prune).
     with _rate_lock:
-        stale = [ip for ip, a in _attempts.items()
+        stale = [k for k, a in _attempts.items()
                  if now - a.get("last_fail", 0) > LOCKOUT_SECONDS]
-        for ip in stale:
-            del _attempts[ip]
+        for k in stale:
+            del _attempts[k]
 
 
-# ── Rate limiting (per-IP) ───────────────────────────────────────────────────
+# ── Rate limiting (per-username) ─────────────────────────────────────────────
 
-_attempts: dict = {}          # ip -> {"fails", "locked_until", "last_fail"}
+# B3 (review 2026-08-18): the failure counter is keyed by USERNAME, not by
+# IP.  Per-IP counting let any valid account reset the lockout of a target
+# account (login as yourself → counter cleared → keep guessing "admin").
+# Entries still expire after LOCKOUT_SECONDS so a stale counter can't lock
+# a username out forever.
+_attempts: dict = {}          # username.lower() -> {"fails", "locked_until", "last_fail", "ip"}
 _rate_lock = threading.Lock()
 MAX_FAILS = 5
 LOCKOUT_SECONDS = 300
 
 
-def check_rate_limit(ip: str) -> bool:
-    """True if the IP may attempt a login."""
+def check_rate_limit(username: str, ip: str = "") -> bool:
+    """True if *username* may attempt a login (per-account lockout)."""
+    key = (username or "").strip().lower()
+    if not key:
+        return True
     with _rate_lock:
-        a = _attempts.get(ip)
+        a = _attempts.get(key)
         if not a:
             return True
         now = time.time()
         if a["locked_until"] > now:
             return False
         if now - a.get("last_fail", 0) > LOCKOUT_SECONDS:
-            del _attempts[ip]            # forget stale entries
+            del _attempts[key]           # forget stale entries
         return True
 
 
-def record_failure(ip: str) -> None:
+def record_failure(username: str, ip: str = "") -> None:
+    key = (username or "").strip().lower()
+    if not key:
+        return
     with _rate_lock:
-        a = _attempts.setdefault(ip, {"fails": 0, "locked_until": 0.0, "last_fail": 0.0})
+        a = _attempts.setdefault(key, {"fails": 0, "locked_until": 0.0,
+                                       "last_fail": 0.0, "ip": ip})
         a["fails"] += 1
         a["last_fail"] = time.time()
+        a["ip"] = ip
         if a["fails"] >= MAX_FAILS:
             a["locked_until"] = time.time() + LOCKOUT_SECONDS
             a["fails"] = 0
 
 
-def record_success(ip: str) -> None:
+def record_success(username: str, ip: str = "") -> None:
+    """Clear ONLY the successful username's counter — other accounts keep
+    their lockout state (B3)."""
+    key = (username or "").strip().lower()
+    if not key:
+        return
     with _rate_lock:
-        _attempts.pop(ip, None)
+        _attempts.pop(key, None)
 
 
 # ── Permission matrix (deny-by-default) ──────────────────────────────────────

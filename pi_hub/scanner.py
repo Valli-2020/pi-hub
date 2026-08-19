@@ -262,13 +262,20 @@ def _ssh_compose_scan(host_ip: str, ssh_user: str = "root") -> List[Dict[str, An
     """
     if not re.fullmatch(r"[A-Za-z0-9._-]{1,32}", ssh_user or ""):
         return []
+    # C4 (review 2026-08-18): ssh concatenates argv with spaces and hands
+    # the result to the REMOTE shell — unquoted parens were a remote syntax
+    # error (returncode != 0 → empty result, indistinguishable from "nothing
+    # found").  The parens are now escaped for the remote shell, and
+    # StrictHostKeyChecking is set so a first-contact hostkey doesn't hang
+    # or fail silently (find -exec cat {} + needs a valid session).
     try:
         r = subprocess.run(
             ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=5",
+             "-o", "StrictHostKeyChecking=accept-new",
              f"{ssh_user}@{host_ip}",
-             "find", "/opt/stacks", "-maxdepth", "2", "(",
+             "find", "/opt/stacks", "-maxdepth", "2", "\\(",
              "-name", "compose.y*ml", "-o", "-name", "docker-compose.y*ml",
-             ")", "-exec", "cat", "{}", "+"],
+             "\\)", "-exec", "cat", "{}", "+"],
             capture_output=True, timeout=_SSH_TIMEOUT, shell=False,
         )
         if r.returncode != 0:
