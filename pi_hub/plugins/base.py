@@ -119,9 +119,16 @@ class ActionDef:
 
     ``caps`` works like :class:`RouteDef` — admin-only if ``["admin"]``,
     any-authed if ``[]``.
+
+    ``fields`` (optional) turns the button into a form dialog: the core
+    frontend renders one input per field (allowlisted types only) and
+    POSTs the values as a JSON body to ``/api/plugin/<name>/<id>``
+    instead of a bodyless POST.  Field dicts:
+    ``{"name", "label", "type", "default", "placeholder"}`` with
+    ``type`` in ``text|password|number|checkbox``.
     """
 
-    __slots__ = ("id", "label", "style", "caps")
+    __slots__ = ("id", "label", "style", "caps", "fields")
 
     def __init__(
         self,
@@ -129,11 +136,13 @@ class ActionDef:
         label: str,
         style: str = "secondary",
         caps: list[str] | None = None,
+        fields: list[dict] | None = None,
     ):
         self.id = id
         self.label = label
         self.style = style
         self.caps = caps or []
+        self.fields = fields or []
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

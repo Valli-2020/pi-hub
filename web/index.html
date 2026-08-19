@@ -706,6 +706,18 @@
   </div>
 </dialog>
 
+<dialog id="plgform">
+  <div class="dlg">
+    <h3 id="pf-title">Configure</h3>
+    <div id="pf-fields"></div>
+    <p class="hint" id="pf-hint"></p>
+    <div class="btn-row" style="justify-content:flex-end;margin-top:14px">
+      <button class="btn btn-quiet" id="pf-cancel">Cancel</button>
+      <button class="btn btn-primary" id="pf-ok">Save</button>
+    </div>
+  </div>
+</dialog>
+
 <dialog id="capsdlg" class="capsdlg">
   <div class="dlg">
     <h3 id="caps-title">Capabilities</h3>
@@ -2036,6 +2048,9 @@ $('#plugins-list').addEventListener('click', e => {
 
 const plgTabTimers = {};
 const plgTabData = {};
+// Action id -> field schema, keyed "pluginName/actionId" (7.7: form
+// dialogs for plugin actions that declare `fields`).
+const plgActionFields = {};
 
 // E1 (review 2026-08-18): tab.icon_svg is the ONLY plugin payload field
 // inserted as markup (everything else passes through esc()).  Sanitize it:
@@ -2110,6 +2125,10 @@ async function renderPluginTabs(){
     tabs.forEach(({ name, tab }) => {
       const id = tab.id;
       if ($('#sidebar .nav-item[data-plg-tab="' + esc(id) + '"]')) return;  // already rendered
+      // Register form-dialog actions (fields schema) for the click handler.
+      (tab.actions || []).forEach(a => {
+        if (a.fields && a.fields.length) plgActionFields[name + '/' + a.id] = a.fields;
+      });
       const btn = document.createElement('button');
       btn.className = 'nav-item';
       btn.dataset.plgTab = id;
@@ -2186,6 +2205,8 @@ document.addEventListener('click', e => {
   const b = e.target.closest('button[data-plgact]');
   if (!b) return;
   const name = b.dataset.plgname;
+  const fields = plgActionFields[name + '/' + b.dataset.plgact];
+  if (fields && fields.length){ openPluginForm(name, b.dataset.plgact, fields); return; }
   b.disabled = true;
   apiFetch('/api/plugin/' + encodeURIComponent(name) + '/' + encodeURIComponent(b.dataset.plgact), { method:'POST' })
     .then(r => r.json())
@@ -2202,6 +2223,78 @@ document.addEventListener('click', e => {
     })
     .catch(() => { b.disabled = false; toast('Request failed', 'err'); });
 });
+
+/* ── Plugin form dialog (7.7: actions with `fields`) ──────────────── */
+let pfActive = null;   // {name, actionId, fields}
+
+function openPluginForm(name, actionId, fields){
+  pfActive = { name, actionId, fields };
+  $('#pf-title').textContent = 'Configure ' + name;
+  const box = $('#pf-fields');
+  box.innerHTML = '';
+  fields.forEach(f => {
+    const row = document.createElement('label');
+    row.className = 'scanrow';
+    row.style.cssText = 'display:flex;align-items:center;gap:10px;margin:6px 0';
+    const label = document.createElement('span');
+    label.className = 'srcc';
+    label.style.flex = '1';
+    label.textContent = f.label || f.name;
+    row.appendChild(label);
+    if (f.type === 'checkbox'){
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.name = f.name;
+      cb.checked = !!f.default;
+      row.appendChild(cb);
+    } else {
+      const inp = document.createElement('input');
+      inp.type = f.type === 'number' ? 'number'
+               : f.type === 'password' ? 'password' : 'text';
+      inp.name = f.name;
+      inp.placeholder = f.placeholder || '';
+      if (f.default !== undefined && f.default !== null)
+        inp.value = String(f.default);
+      row.appendChild(inp);
+    }
+    box.appendChild(row);
+  });
+  $('#pf-hint').textContent = '';
+  $('#plgform').showModal();
+}
+
+function pfSubmit(){
+  if (!pfActive) return;
+  const { name, actionId, fields } = pfActive;
+  const body = {};
+  fields.forEach(f => {
+    const el = $('#pf-fields').querySelector('[name="' + CSS.escape(f.name) + '"]');
+    if (!el) return;
+    body[f.name] = f.type === 'checkbox' ? el.checked : el.value;
+  });
+  $('#pf-ok').disabled = true;
+  apiFetch('/api/plugin/' + encodeURIComponent(name) + '/' + encodeURIComponent(actionId), {
+    method:'POST',
+    headers:{ 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+    .then(r => r.json())
+    .then(d => {
+      $('#pf-ok').disabled = false;
+      $('#plgform').close();
+      if (d.error){ toast(d.error, 'err'); return; }
+      toast(d.message || 'Saved', 'ok');
+      apiFetch('/api/plugins/list').then(r => r.json()).then(plugins => {
+        const p = plugins[name];
+        if (!p) return;
+        (p.ui || []).forEach(u => { if (u.type === 'TabUIDef' && u.id) pollPluginTab(name, u); });
+      }).catch(() => {});
+    })
+    .catch(() => { $('#pf-ok').disabled = false; $('#plgform').close(); toast('Request failed', 'err'); });
+}
+
+$('#pf-cancel').addEventListener('click', () => $('#plgform').close());
+$('#pf-ok').addEventListener('click', pfSubmit);
 
 /* ── Update system (v7.1, admin) ─────────────────────────────────── */
 let updLatest = null;

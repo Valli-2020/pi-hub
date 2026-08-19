@@ -428,6 +428,17 @@ def _serialize_ui(ui_list: list) -> list[dict]:
                         "label": a.label,
                         "style": a.style,
                         "caps": a.caps,
+                        "fields": [
+                            {
+                                "name": f.get("name", ""),
+                                "label": f.get("label", ""),
+                                "type": f.get("type", "text"),
+                                "default": f.get("default"),
+                                "placeholder": f.get("placeholder", ""),
+                            }
+                            for f in getattr(a, "fields", [])
+                            if isinstance(f, dict)
+                        ],
                     }
                     for a in getattr(item, "actions", [])
                     if hasattr(a, "id")
