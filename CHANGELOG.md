@@ -3,6 +3,19 @@
 All notable changes to Pi Hub are documented here. Every release ships a
 changelog entry AND matching GitHub release notes.
 
+## [7.7.0] - 2026-08-19
+
+### Added
+
+- **Plugin form-dialog actions** (`ActionDef.fields`): plugin actions can
+  declare a field schema (allowlisted types `text` / `password` /
+  `number` / `checkbox`); the frontend opens a form dialog instead of a
+  bodyless POST and submits the values as JSON to
+  `/api/plugin/<name>/<action-id>`. Enables plugin config forms without
+  allowing plugin-supplied HTML (stored-XSS surface stays closed).
+  Backwards compatible: actions without `fields` behave exactly as
+  before.
+
 ## [7.6.1] - 2026-08-19
 
 Fixes from the 2026-08-18 review of the 7.6.1 fork (review doc outside the
