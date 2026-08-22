@@ -29,7 +29,7 @@ Wants=network-online.target
 [Service]
 Type=simple
 WorkingDirectory=/home/pi/pi-hub
-ExecStart=/usr/bin/python3 /home/pi/pi-hub/run.py --bind 100.64.0.1 --port 8898
+ExecStart=/usr/bin/python3 /home/pi/pi-hub/run.py --bind <tailscale-ip> --port 8898
 Restart=always
 RestartSec=5
 
@@ -43,7 +43,7 @@ systemctl --user daemon-reload
 systemctl --user enable --now pi-hub
 ```
 
-Bind address: use the host's Tailscale IP (e.g. `100.64.0.1`) instead of
+Bind address: use the host's Tailscale IP (see `tailscale ip -4`) instead of
 `127.0.0.1` when you want to reach the hub from other Tailscale devices.
 `0.0.0.0` prints a warning and should only be used with auth enabled.
 
