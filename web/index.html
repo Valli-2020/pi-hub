@@ -13,6 +13,12 @@
     var dark = t === 'dark' || (t === 'auto' && !window.matchMedia('(prefers-color-scheme: light)').matches);
     document.documentElement.dataset.theme = dark ? 'dark' : 'light';
     document.documentElement.dataset.themePref = t;
+    // Plugin theme (API v2): re-applied before first paint so there is no
+    // flash of the default theme.  Skipped in safe mode (?safe).
+    try {
+      var c = /[?&]safe\b/.test(location.search) ? '' : localStorage.getItem('pihub-plg-theme');
+      if (c) { var st = document.createElement('style'); st.id = 'ph-theme'; st.textContent = c; document.head.appendChild(st); }
+    } catch(e) {}
   })();
 </script>
 <style>
@@ -430,6 +436,57 @@
   .upd-changelog b { color:var(--bad); font-weight:600; }
   .btn-bad-solid { background:var(--bad); color:var(--bad-ink); border:1px solid var(--bad); }
   .btn-bad-solid:hover:not(:disabled) { filter:brightness(1.12); }
+  /* ── Plugin API v2 (contributions) ───────────────────────────────────── */
+  .ph-slot, .ph-c { display:contents; }
+  table.ph-tbl { table-layout:auto; }
+  table.ph-tbl td { overflow-wrap:break-word; }
+  table.ph-tbl td.actions { width:1%; white-space:nowrap; }
+  .ph-badges { display:flex; flex-wrap:wrap; align-items:center; gap:6px; margin-top:-4px; }
+  .ph-badges:not(:has(.ph-badge, .ph-err, .ph-text, .ph-gauge)) { display:none; }
+  .ph-top { display:block; margin:0 0 14px; }
+  .ph-top:empty { display:none; }
+  .ph-badge, .ph-text[data-tone] { display:inline-flex; align-items:center; height:20px; padding:0 8px;
+        border-radius:99px; font-size:11px; font-weight:550; letter-spacing:.02em; white-space:nowrap;
+        border:1px solid var(--border); color:var(--muted); background:var(--surface-2); flex:none; }
+  .ph-badge[data-tone="ok"], .ph-text[data-tone="ok"]   { color:var(--ok);   border-color:color-mix(in oklab, var(--ok) 40%, transparent);   background:color-mix(in oklab, var(--ok) 12%, transparent); }
+  .ph-badge[data-tone="warn"], .ph-text[data-tone="warn"] { color:var(--warn); border-color:color-mix(in oklab, var(--warn) 40%, transparent); background:color-mix(in oklab, var(--warn) 12%, transparent); }
+  .ph-badge[data-tone="bad"], .ph-text[data-tone="bad"]  { color:var(--bad);  border-color:color-mix(in oklab, var(--bad) 40%, transparent);  background:color-mix(in oklab, var(--bad) 12%, transparent); }
+  .ph-badge[data-tone="accent"], .ph-text[data-tone="accent"] { color:var(--accent); border-color:color-mix(in oklab, var(--accent) 40%, transparent); background:color-mix(in oklab, var(--accent) 12%, transparent); }
+  .ph-badge[data-tone="info"], .ph-text[data-tone="info"] { color:var(--text); }
+  .ph-text { font-size:13px; }
+  .ph-mono { font-family:var(--mono); }
+  .ph-err { display:inline-flex; align-items:center; justify-content:center; width:18px; height:18px; flex:none;
+        border-radius:50%; font-size:11px; font-weight:700; cursor:help;
+        color:var(--bad); border:1px solid color-mix(in oklab, var(--bad) 45%, transparent); }
+  .ph-stat { display:inline-flex; flex-direction:column; gap:1px; }
+  .ph-stat b { font-size:20px; font-weight:600; font-variant-numeric:tabular-nums; }
+  .ph-stat b i { font-size:12px; font-weight:500; font-style:normal; color:var(--muted); margin-left:3px; }
+  .ph-stat small { font-size:11px; color:var(--muted); }
+  .ph-stat[data-tone="ok"] b { color:var(--ok); } .ph-stat[data-tone="warn"] b { color:var(--warn); } .ph-stat[data-tone="bad"] b { color:var(--bad); }
+  .ph-kv { display:grid; grid-template-columns:auto 1fr; gap:4px 14px; margin:0; font-size:13px; }
+  .ph-kv dt { color:var(--muted); } .ph-kv dd { margin:0; font-family:var(--mono); word-break:break-all; }
+  .ph-stack { display:flex; flex-direction:column; gap:8px; }
+  .ph-stack[data-dir="row"] { flex-direction:row; flex-wrap:wrap; align-items:center; }
+  .ph-cols { display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:12px; }
+  .ph-section { border:1px solid var(--border); border-radius:var(--radius); padding:12px 14px; background:var(--surface); }
+  .ph-section > h4 { margin:0 0 8px; font-size:13px; font-weight:600; }
+  .ph-link { color:var(--accent); text-decoration:none; } .ph-link:hover { text-decoration:underline; }
+  .ph-gauge { min-width:90px; }
+  .ph-safe { position:sticky; top:0; z-index:50; padding:8px 16px; text-align:center; font-size:13px;
+        background:color-mix(in oklab, var(--warn) 22%, var(--surface)); border-bottom:1px solid var(--warn); }
+  .ph-safe a { color:inherit; font-weight:600; }
+  .nav-item[data-ph-hide] { display:none; }
+  :root[data-density="compact"] .card { padding:10px 12px 10px 13px; gap:8px; }
+  :root[data-density="compact"] .grid { gap:8px; }
+  :root[data-density="compact"] td { padding-top:6px; padding-bottom:6px; }
+  .pc-list { list-style:none; margin:0 0 14px; padding:0; display:flex; flex-direction:column; gap:6px; }
+  .pc-list li { padding:8px 10px; border:1px solid var(--border); border-radius:var(--radius-sm); font-size:13px; background:var(--surface-2); }
+  .pc-list li code { font-family:var(--mono); font-size:12px; color:var(--muted); margin-right:6px; }
+  .pc-list li[data-risk="high"] { border-color:color-mix(in oklab, var(--bad) 50%, var(--border)); }
+  .pc-list li[data-risk="high"] b { color:var(--bad); }
+  .plg-frame { width:100%; border:0; display:block; background:transparent; color-scheme:normal; }
+  .plg-frame-box { border:1px solid var(--border); border-radius:var(--radius); overflow:hidden; background:var(--surface); }
+  .plg-frame-err { padding:12px 14px; font-size:13px; color:var(--bad); }
 </style>
 </head>
 <body>
@@ -496,6 +553,7 @@
   <div class="health" id="health" role="status" aria-live="polite" aria-label="Infrastructure health">
     <span class="hpill"><b id="h-up">—</b> up</span>
     <span class="hpill" id="h-down-pill" hidden><b id="h-down">0</b> down</span>
+    <span class="ph-slot" data-slot="header.pill" data-key=""></span>
   </div>
 
   <div class="search">
@@ -578,6 +636,7 @@
   <main>
     <section class="view" data-view="hosts">
       <div class="viewhead"><h2>Hosts</h2><span class="sub" id="sub-hosts"></span></div>
+      <div class="ph-slot ph-top" data-slot="hosts.top" data-key=""></div>
       <div id="hosts" class="grid"></div>
       <p class="nomatch" data-nomatch="hosts">No host matches that filter.</p>
     </section>
@@ -586,6 +645,7 @@
       <div class="viewhead"><h2>Services</h2><span class="sub" id="sub-services"></span>
         <button class="btn btn-sm btn-quiet" id="scan-btn" hidden>Scan for services</button>
       </div>
+      <div class="ph-slot ph-top" data-slot="services.top" data-key=""></div>
       <div class="filterbar" id="svc-filters" hidden>
         <span class="fgroup" id="svc-host-chips"></span>
         <span class="fgroup" id="svc-source-chips"></span>
@@ -603,6 +663,7 @@
 
     <section class="view" data-view="containers" hidden>
       <div class="viewhead"><h2 id="ct-title">Proxmox containers</h2><span class="sub" id="sub-containers"></span></div>
+      <div class="ph-slot ph-top" data-slot="containers.top" data-key=""></div>
       <div class="filterbar" id="ct-filters" hidden>
         <span class="fgroup" id="ct-inst-chips"></span>
         <span class="fgroup" id="ct-tag-chips"></span>
@@ -623,11 +684,13 @@
 
     <section class="view" data-view="stacks" hidden>
       <div class="viewhead"><h2>Dockge stacks</h2><span class="sub" id="sub-stacks"></span></div>
+      <div class="ph-slot ph-top" data-slot="stacks.top" data-key=""></div>
       <div id="stacks" class="rows"></div>
     </section>
 
     <section class="view" data-view="users" hidden>
       <div class="viewhead"><h2>Users</h2><span class="sub" id="sub-users"></span></div>
+      <div class="ph-slot ph-top" data-slot="users.top" data-key=""></div>
       <div class="tablewrap"><div class="tscroll"><table>
         <thead><tr>
           <th>Username</th><th>Role</th><th>Created</th><th><span class="sr">Actions</span></th>
@@ -645,7 +708,9 @@
 
     <section class="view" data-view="settings" hidden>
       <div class="viewhead"><h2>Settings</h2><span class="sub">Server configuration</span></div>
+      <div class="ph-slot ph-top" data-slot="settings.top" data-key=""></div>
       <div class="setgrid">
+        <span class="ph-slot" data-slot="settings.card" data-key=""></span>
         <div class="setcard" id="update-card">
           <h3 class="group">Update</h3>
           <div id="update-status">Checking…</div>
@@ -679,6 +744,7 @@
         <div class="setcard" id="plugins-card">
           <h3 class="group">Plugins</h3>
           <div id="plugins-list"></div>
+          <div id="ph-appearance"></div>
           <h3 class="group" style="margin-top:20px">Plugin repositories</h3>
           <form id="plg-addform" class="adduser" autocomplete="off">
             <input name="plgurl" placeholder="https://github.com/owner/repo" required
@@ -714,6 +780,19 @@
     <div class="btn-row" style="justify-content:flex-end;margin-top:14px">
       <button class="btn btn-quiet" id="pf-cancel">Cancel</button>
       <button class="btn btn-primary" id="pf-ok">Save</button>
+    </div>
+  </div>
+</dialog>
+
+<dialog id="plgconsent">
+  <div class="dlg">
+    <h3 id="pc-title">Approve permissions</h3>
+    <p id="pc-sub"></p>
+    <ul class="pc-list" id="pc-list"></ul>
+    <p class="hint">Permissions are consent, not a sandbox: plugin Python code runs inside Pi Hub with the access listed here. Only approve plugins from sources you trust.</p>
+    <div class="btn-row" style="justify-content:flex-end;margin-top:14px">
+      <button class="btn btn-quiet" id="pc-cancel">Cancel</button>
+      <button class="btn btn-primary" id="pc-ok">Approve &amp; enable</button>
     </div>
   </div>
 </dialog>
@@ -838,7 +917,7 @@ $('#setup-form').addEventListener('submit', async e => {
   try {
     const r = await fetch('/api/auth/bootstrap', {
       method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ username: $('#setup-user').value.trim(), password: $('#setup-pass').value })
+      body: JSON.stringify({ username: $('#setup-user').value.trim(), password: $('#setup-pass').value, client: 'web' })
     });
     const d = await r.json().catch(() => ({}));
     if (r.status === 429) { err.textContent = 'Too many attempts — try again later.'; err.hidden = false; return; }
@@ -853,7 +932,7 @@ $('#login-form').addEventListener('submit', async e => {
   try {
     const r = await fetch('/api/auth/login', {
       method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ username: $('#login-user').value.trim(), password: $('#login-pass').value })
+      body: JSON.stringify({ username: $('#login-user').value.trim(), password: $('#login-pass').value, client: 'web' })
     });
     const d = await r.json().catch(() => ({}));
     if (r.status === 429) { err.textContent = 'Too many attempts — try again later.'; err.hidden = false; return; }
@@ -1204,6 +1283,7 @@ function showView(v){
   if (v === 'users') loadUsers();
   if (v === 'settings') loadSettings();
   applyFilter();
+  PH.onView(v);
 }
 $('#sidebar').addEventListener('click', e => {
   const item = e.target.closest('.nav-item');
@@ -1299,6 +1379,7 @@ function renderHosts(hosts){
     }
   });
   $('#c-hosts').textContent = g.children.length;
+  PH.paint(g);
   applyFilter();
 }
 
@@ -1318,13 +1399,16 @@ function simpleCard(h){
   card.innerHTML =
     '<div class="top">' + iconTile(h.icon) + '<h4>' + esc(h.name) + '</h4>' +
       chip('pending', 'hdot-' + esc(h.id)) + '</div>' +
+    PH.badgeRow('hosts.card.badges', h.id) +
     '<div class="meta">' + esc(h.os_label || h.type || '') + ' · ' + esc(h.ip) + '</div>' +
+    PH.slot('hosts.card.body', h.id) +
     '<div class="task" id="' + esc(h.id) + '__prog"><span class="spinner"></span><span class="txt"></span></div>' +
     '<div class="btn-row">' +
       (admin ? editBtn('host', h.id, h.name) + delBtn('host', h.id, h.name) : '') +
       (caps.includes('wake') && canAct('wake', h.id) ? btn('ok',   SVG.power, 'Wake',     'wake', h.id)       : '') +
       (caps.includes('reboot') && canAct('reboot', h.id) ? btn('quiet',SVG.redo,  'Reboot',   'reboot', h.id)     : '') +
       (caps.includes('shutdown') && canAct('shutdown', h.id) ? btn('bad',  SVG.power, 'Shutdown', 'shutdown', h.id)   : '') +
+      PH.slot('hosts.card.actions', h.id) +
     '</div>';
   return card;
 }
@@ -1342,12 +1426,16 @@ function dualbootCard(linux, win){
     '<div class="top">' + iconTile(linux.icon) +
       '<h4>' + esc(win.name) + ' / ' + esc(linux.name) + '</h4>' +
       chip('pending', 'hdot-' + esc(linux.id)) + '</div>' +
+    PH.badgeRow('hosts.card.badges', linux.id) +
     '<div class="meta">Debian ' + esc(linux.ip) + ' · Win ' + esc(win.ip) + '</div>' +
+    PH.slot('hosts.card.body', linux.id) +
     '<div class="task" id="' + esc(linux.id) + '__prog"><span class="spinner"></span><span class="txt"></span></div>' +
     // admin buttons live OUTSIDE the db-row: paintDualboot owns that row
     (admin ? '<div class="btn-row" id="db-admin-' + esc(linux.id) + '">' +
       editBtn('host', linux.id, linux.name) + delBtn('host', linux.id, linux.name) + '</div>' : '') +
-    '<div class="btn-row" id="db-' + esc(linux.id) + '"></div>';
+    '<div class="btn-row" id="db-' + esc(linux.id) + '"></div>' +
+    // plugin actions get their own row: paintDualboot owns #db-<id>
+    (PH.has('hosts.card.actions') ? '<div class="btn-row">' + PH.slot('hosts.card.actions', linux.id) + '</div>' : '');
   setTimeout(() => paintDualboot(linux, win, null), 0);
   return card;
 }
@@ -1481,16 +1569,17 @@ function renderServices(services){
     const origin = (s.host ? esc(s.host) + (s.source ? ' · ' + esc(s.source) : '') : (s.source ? esc(s.source) : ''));
     const card = cardShell('svc-' + id, [s.name, s.url, s.host || '', s.source || ''].join(' '));
     card.innerHTML =
-      '<div class="top">' + iconTile(s.icon) + '<h4>' + esc(s.name) + '</h4>' + chip('pending', 'sdot-' + id) + '</div>' +
+      '<div class="top">' + iconTile(s.icon) + '<h4>' + esc(s.name) + '</h4>' + chip('pending', 'sdot-' + id) + '</div>' + PH.badgeRow('services.card.badges', s.name) +
       '<div class="meta">' + esc(String(s.url).replace(/^https?:\/\//,'')) + '</div>' +
       (origin ? '<div class="meta"><span class="tagpill">' + origin + '</span></div>' : '') +
       '<div class="btn-row">' +
         (admin ? editBtn('service', s.name, s.name) + delBtn('service', s.name, s.name) : '') +
         '<a class="btn btn-primary btn-block" id="sopen-' + id + '" href="' + esc(s.url) + '" ' +
-        'target="_blank" rel="noopener">' + SVG.ext + 'Open</a></div>';
+        'target="_blank" rel="noopener">' + SVG.ext + 'Open</a>' + PH.slot('services.card.actions', s.name) + '</div>';
     g.appendChild(card);
   });
   $('#c-services').textContent = g.children.length;
+  PH.paint(g);
   renderServiceFilters();
   applyFilter();
 }
@@ -1511,6 +1600,7 @@ function renderProxmoxCard(pm){
 
 /* ── Stacks ────────────────────────────────────────────────────────────── */
 function renderStacks(stacks){
+  S.stacks = Array.isArray(stacks) ? stacks : [];
   const el = $('#stacks'); el.innerHTML = '';
   if (!stacks || !stacks.length) {
     el.innerHTML = '<div class="empty"><strong>No stacks reported</strong>' +
@@ -1522,11 +1612,12 @@ function renderStacks(stacks){
     const row = document.createElement('div');
     row.className = 'row';
     row.dataset.hay = (st.name + ' ' + st.status).toLowerCase();
-    row.innerHTML = '<span class="name">' + esc(st.name) + '</span>' + chip(st.status);
+    row.innerHTML = '<span class="name">' + esc(st.name) + '</span>' + PH.slot('stacks.row.badges', st.name) + chip(st.status);
     el.appendChild(row);
   });
   $('#c-stacks').textContent = stacks.length;
   $('#sub-stacks').textContent = stacks.filter(s => s.status === 'running').length + ' running';
+  PH.paint(el);
   applyFilter();
 }
 
@@ -1542,7 +1633,7 @@ $$('th[data-sort]').forEach(th => th.addEventListener('click', () => {
 function renderContainers(d){
   if (!d || !d.success || !d.containers) {
     S.containers = [];
-    $('#ct-body').innerHTML = '<tr><td colspan="6"><div class="empty">' +
+    $('#ct-body').innerHTML = '<tr><td colspan="' + (7 + PH.cols().length) + '"><div class="empty">' +
       '<strong>Proxmox is not answering</strong><p>' + esc(d && d.error || 'No response from the API.') + '</p>' +
       '<button class="btn btn-quiet btn-sm" data-act="ct-retry">Try again</button></div></td></tr>';
     $('#c-containers').textContent = '';
@@ -1591,12 +1682,12 @@ function paintContainers(){
     const mem = run && c.mem ? (c.mem / 1073741824).toFixed(1) : '';
     return [c.instance, c.vmid, c.name, c.status,
             (c.tags || []).join(','), cpu, mem].join('|');
-  }).join(';');
+  }).join(';') + '#' + PH.colSig();   // plugin columns change the row markup
   if (paintContainers._sig === sig) { renderCtFilters(); return; }
   paintContainers._sig = sig;
 
   if (!list.length) {
-    tb.innerHTML = '<tr><td colspan="7"><div class="empty"><strong>No containers</strong>' +
+    tb.innerHTML = '<tr><td colspan="' + (7 + PH.cols().length) + '"><div class="empty"><strong>No containers</strong>' +
       '<p>Proxmox answered, but the list is empty.</p></div></td></tr>';
   } else {
     tb.innerHTML = list.map(ct => {
@@ -1615,12 +1706,16 @@ function paintContainers(){
         '<td>' + chip(ct.status) + '</td>' +
         '<td>' + usage(cpu, cpu == null ? '—' : cpu.toFixed(1) + '%') + '</td>' +
         '<td>' + usage(memPct, memGB == null ? '—' : memGB.toFixed(1) + ' GB') + '</td>' +
+        PH.cols().map(c => '<td class="ph-td">' + PH.slot('containers.column', capTarget, c.id) + '</td>').join('') +
         '<td class="actions"><div class="btn-row">' +
           (run && canAct('containers', capTarget) ? btn('bad', SVG.stop, 'Stop',  'ct-stop', ct.vmid, 'data-name="' + esc(ct.name) + '" data-inst="' + esc(inst) + '"')
                : (!run && canAct('containers', capTarget) ? btn('ok',  SVG.play, 'Start', 'ct-start', ct.vmid, 'data-name="' + esc(ct.name) + '" data-inst="' + esc(inst) + '"') : '')) +
+        PH.slot('containers.row.actions', capTarget) +
         '</div></td></tr>';
     }).join('');
   }
+  PH.paintCtHead();
+  PH.paint(tb);
 
   const running = S.containers.filter(c => c.status === 'running').length;
   $('#c-containers').textContent = S.containers.length;
@@ -1883,7 +1978,8 @@ function renderPlugins(){
     el.innerHTML = '<p class="hint">Only admins can manage plugins.</p>';
     return;
   }
-  // Loaded plugins (from /api/plugins/list) + installed-but-disabled
+  // Loaded plugins (from /api/plugins/list — since 8.0 this includes plugins
+  // that failed to load or wait for approval) + installed-but-disabled
   // plugins (from the source scan cache) — both belong in the list.
   Promise.all([
     apiFetch('/api/plugins/list').then(r => r.json()).catch(() => ({})),
@@ -1899,30 +1995,106 @@ function renderPlugins(){
     const names = Object.keys(installed);
     if (!names.length){
       el.innerHTML = '<p class="hint">No plugins installed. Add a repository below and install one.</p>';
+      PH.renderAppearance();
       return;
     }
     el.innerHTML = names.map(name => {
       const rec = installed[name];
       const p = rec.info;
-      const statusClass = rec.loaded && p.status === 'loaded' ? 'online' : 'offline';
-      const stateTxt = rec.loaded
-        ? esc(p.status || '')
-        : 'installed · disabled';
-      const btn = rec.loaded
-        ? '<button class="btn btn-sm btn-quiet" data-plg="disable" data-name="' + esc(name) + '">Disable</button>'
-        : '<button class="btn btn-sm btn-primary" data-plg="enable" data-name="' + esc(name) + '">Enable</button>';
+      const status = rec.loaded ? (p.status || '') : 'installed · disabled';
+      const ok = rec.loaded && status === 'loaded';
+      const waiting = rec.loaded && status === 'needs_approval';
+      const dot = ok ? 'online' : (waiting ? 'pending' : 'offline');
+      const label = waiting ? 'needs approval' : status;
+      let btns = '';
+      if (ok){
+        if (p.has_config) btns += '<button class="btn btn-sm btn-quiet" data-plg="configure" data-name="' + esc(name) + '">Configure</button>';
+        if ((p.granted || []).some(c => c.startsWith('ui.')))
+          btns += '<button class="btn btn-sm btn-quiet" data-plg="ui-toggle" data-off="' + (p.ui_off ? '0' : '1') + '" data-name="' + esc(name) + '">' + (p.ui_off ? 'Show UI' : 'Hide UI') + '</button>';
+        btns += '<button class="btn btn-sm btn-quiet" data-plg="disable" data-name="' + esc(name) + '">Disable</button>';
+      } else if (waiting){
+        btns += '<button class="btn btn-sm btn-primary" data-plg="enable" data-name="' + esc(name) + '">Review &amp; approve</button>';
+      } else if (rec.loaded && status === 'error'){
+        btns += '<button class="btn btn-sm btn-primary" data-plg="enable" data-name="' + esc(name) + '">Retry</button>' +
+                '<button class="btn btn-sm btn-quiet" data-plg="disable" data-name="' + esc(name) + '">Disable</button>';
+      } else {
+        btns += rec.loaded
+          ? '<button class="btn btn-sm btn-quiet" data-plg="disable" data-name="' + esc(name) + '">Disable</button>'
+          : '<button class="btn btn-sm btn-primary" data-plg="enable" data-name="' + esc(name) + '">Enable</button>';
+      }
+      const apiTag = rec.loaded && p.api_version ? ' <span class="srcc">API v' + esc(p.api_version) + '</span>' : '';
+      const denied = rec.loaded && (p.denied || []).length
+        ? '<div class="hint" style="flex-basis:100%;margin:0">Not shown (missing grant): ' + esc(p.denied.join(', ')) + '</div>' : '';
       return '<div class="scanrow">' +
-        '<span class="dot ' + statusClass + '"></span>' +
+        '<span class="dot ' + dot + '"></span>' +
         '<strong>' + esc(name) + '</strong> ' +
-        '<span class="meta">v' + esc(p.version || '?') + '</span>' +
-        '<span class="srcc">' + stateTxt +
+        '<span class="meta">v' + esc(p.version || '?') + '</span>' + apiTag +
+        '<span class="srcc">' + esc(label) +
           (rec.loaded && p.last_error ? ' — ' + esc(p.last_error) : '') + '</span>' +
-        '<span class="btn-row" style="margin:0">' + btn +
+        '<span class="btn-row" style="margin:0">' + btns +
         '<button class="btn btn-sm btn-bad" data-plg="uninstall" data-name="' + esc(name) + '">Uninstall</button>' +
-        '</span></div>';
+        '</span>' + denied + '</div>';
     }).join('');
+    PH.renderAppearance();
   }).catch(() => {
     el.innerHTML = '<p class="hint">Failed to load plugins.</p>';
+  });
+}
+
+/* ── Consent dialog (8.0): the admin approves every declared capability
+   BEFORE any plugin code is imported. ─────────────────────────────────── */
+let pcActive = null;
+function openConsent(name, needs){
+  pcActive = { name, declared: needs.declared || [] };
+  $('#pc-title').textContent = 'Approve ' + name;
+  $('#pc-sub').textContent = name + ' asks for the following access. Nothing of the plugin runs until you approve.';
+  const list = (needs.declared || []).slice().sort();
+  $('#pc-list').innerHTML = list.length ? list.map(c => {
+    const info = CAP_INFO[c] || ['Unknown capability', 1];
+    return '<li data-risk="' + (info[1] ? 'high' : 'low') + '"><code>' + esc(c) + '</code><b>' + esc(info[0]) + '</b></li>';
+  }).join('') : '<li><b>No special access</b> — it only uses its own routes.</li>';
+  $('#plgconsent').showModal();
+}
+function enablePlugin(name, approve){
+  const opts = { method:'POST' };
+  if (approve){ opts.headers = { 'Content-Type': 'application/json' }; opts.body = JSON.stringify({ approve }); }
+  return apiFetch('/api/config/plugins/' + encodeURIComponent(name) + '/enable', opts)
+    .then(async r => ({ status: r.status, d: await r.json().catch(() => ({})) }))
+    .then(async ({ status, d }) => {
+      if (status === 409 && d.needs_approval){ openConsent(name, d.needs_approval); return; }
+      toast(d.message || d.error || 'Enabled', d.success === false || d.error ? 'err' : 'ok');
+      await loadPluginSources(); renderPlugins(); renderPluginTabs(); PH.refresh();
+    })
+    .catch(() => toast('Request failed', 'err'));
+}
+$('#pc-cancel').addEventListener('click', () => { $('#plgconsent').close(); pcActive = null; });
+$('#pc-ok').addEventListener('click', () => {
+  if (!pcActive) return;
+  const { name, declared } = pcActive;
+  $('#plgconsent').close(); pcActive = null;
+  enablePlugin(name, declared);
+});
+
+/* ── Configure dialog (8.0): schema-driven plugin config ──────────────── */
+async function openPluginConfig(name){
+  const d = await apiFetch('/api/config/plugins/' + encodeURIComponent(name) + '/config').then(r => r.json()).catch(() => ({}));
+  if (!d.schema){ toast(d.error || 'Could not load configuration', 'err'); return; }
+  const fields = d.schema.map(f => ({
+    name: f.name, label: f.label + (f.required ? ' *' : ''), type: f.secret ? 'password' : f.type,
+    default: f.secret ? '' : (d.values[f.name] ?? f.default),
+    placeholder: f.secret ? (d.values[f.name] && d.values[f.name].__set ? '•••••• (set — leave blank to keep)' : f.placeholder) : f.placeholder,
+    options: f.options, help: f.help,
+  }));
+  openPluginForm(name, 'config', fields, {
+    title: 'Configure ' + name,
+    submit: async values => {
+      const r = await apiFetch('/api/config/plugins/' + encodeURIComponent(name) + '/config', {
+        method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify(values) }).then(r => r.json());
+      if (r.error) return r.error;
+      toast(r.message || 'Saved', 'ok');
+      PH.refresh();
+      return null;
+    },
   });
 }
 
@@ -2020,9 +2192,16 @@ $('#plugins-list').addEventListener('click', e => {
   const name = b.dataset.name;
   if (b.dataset.plg === 'enable'){
     b.disabled = true;
-    apiFetch('/api/config/plugins/' + encodeURIComponent(name) + '/enable', { method:'POST' })
+    enablePlugin(name, null);
+    return;
+  }
+  if (b.dataset.plg === 'configure'){ openPluginConfig(name); return; }
+  if (b.dataset.plg === 'ui-toggle'){
+    b.disabled = true;
+    apiFetch('/api/config/plugins/' + encodeURIComponent(name) + '/ui', { method:'POST',
+      headers:{'Content-Type':'application/json'}, body: JSON.stringify({ off: b.dataset.off === '1' }) })
       .then(r => r.json())
-      .then(async d => { toast(d.message || 'Enabled', d.success === false ? 'err' : 'ok'); await loadPluginSources(); renderPlugins(); renderPluginTabs(); })
+      .then(async d => { toast(d.error || 'UI updated', d.error ? 'err' : 'ok'); renderPlugins(); PH.refresh(); })
       .catch(() => toast('Request failed', 'err'));
     return;
   }
@@ -2030,7 +2209,7 @@ $('#plugins-list').addEventListener('click', e => {
     b.disabled = true;
     apiFetch('/api/config/plugins/' + encodeURIComponent(name) + '/disable', { method:'POST' })
       .then(r => r.json())
-      .then(async d => { toast(d.message || 'Disabled', d.success === false ? 'err' : 'ok'); await loadPluginSources(); renderPlugins(); renderPluginTabs(); })
+      .then(async d => { toast(d.message || 'Disabled', d.success === false ? 'err' : 'ok'); await loadPluginSources(); renderPlugins(); renderPluginTabs(); PH.refresh(); })
       .catch(() => toast('Request failed', 'err'));
     return;
   }
@@ -2038,16 +2217,412 @@ $('#plugins-list').addEventListener('click', e => {
     confirmAction('Uninstall plugin', 'Uninstall ' + name + '? Its files are deleted from disk.', async () => {
       const d = await apiFetch('/api/config/plugins/' + encodeURIComponent(name), { method:'DELETE' }).then(r => r.json()).catch(() => ({}));
       toast(d.message || 'Uninstalled', d.success === false ? 'err' : 'ok');
-      loadPluginSources(); renderPlugins(); renderPluginTabs();
+      loadPluginSources(); renderPlugins(); renderPluginTabs(); PH.refresh();
     });
     return;
   }
 });
 
+/* ── Plugin API v2: contributions, theme, layout (8.0) ─────────────────────
+   Plugins never ship HTML or JS.  The server validates every contribution
+   payload (pi_hub/plugins/contrib.py); this renderer escapes every string
+   again and only knows the closed node vocabulary below.  Contributions fail
+   in isolation: a broken provider shows a small "!" chip, never a blank page.
+   `PH.slot()` returns '' while nothing contributes to a slot, so with no
+   plugins the core DOM is byte-for-byte what it always was. */
+const PH = (function(){
+  const SAFE = /[?&]safe\b/.test(location.search);
+  const st = { rev: 0, contribs: [], byslot: {}, data: {}, last: {}, seq: 0, styles: [],
+               opts: null, acts: new Map(), lastPoll: 0, sig: '', booted: false,
+               busy: false, defaultView: '', safeSrv: false };
+  const TONES = ['ok','warn','bad','muted','accent','info'];
+  const STATE_MAP = { ok:'online', warn:'degraded', bad:'offline', off:'stopped', unknown:'pending' };
+  const cls = p => String(p).replace(/[^A-Za-z0-9_-]/g, '-');
+  const tone = t => TONES.includes(t) ? t : '';
+  const okHref = h => typeof h === 'string' && /^(https?:\/\/[^\s\\"'<>]+|\/(?!\/)[^\s\\"'<>]*)$/i.test(h);
+  const okAction = a => typeof a === 'string' && /^[A-Za-z0-9._~-]+(\/[A-Za-z0-9._~-]+)*$/.test(a) && !a.split('/').includes('..');
+
+  /* ── Node renderer (closed vocabulary, everything escaped) ───────────── */
+  function cell(v, ctx, depth){
+    if (v && typeof v === 'object') return rnode(v, ctx, depth + 1);
+    if (v === true) return 'yes';
+    if (v === false) return 'no';
+    return esc(v == null ? '' : String(v));
+  }
+  function button(n, ctx, extra){
+    if (!okAction(n.action)) return '';
+    if (Array.isArray(n.caps) && n.caps.includes('admin') && !(window.USER && window.USER.role === 'admin')) return '';
+    const id = ctx.cid + '|' + ctx.key + '|' + (ctx.n.i++);
+    st.acts.set(id, { plugin: ctx.plugin, cid: ctx.cid, action: n.action, method: n.method || 'POST',
+                      confirm: n.confirm || '', fields: n.fields || [], label: n.label || '',
+                      key: ctx.key, row: extra && extra.row != null ? extra.row : null });
+    const style = ({ primary:'btn-primary', ok:'btn-ok', bad:'btn-bad', quiet:'btn-quiet' })[n.style] || 'btn-quiet';
+    return '<button class="btn btn-sm ' + style + '" data-phact="' + esc(id) + '">' + esc(n.label || '') + '</button>';
+  }
+  function rnode(n, ctx, depth){
+    if (!n || typeof n !== 'object' || depth > 8) return '';
+    switch (n.type) {
+      case 'text':
+        return '<span class="ph-text' + (n.mono ? ' ph-mono' : '') + '"' + (tone(n.tone) ? ' data-tone="' + tone(n.tone) + '"' : '') + '>' + esc(n.text) + '</span>';
+      case 'badge':
+        return '<span class="ph-badge" data-tone="' + (tone(n.tone) || 'muted') + '"' + (n.title ? ' title="' + esc(n.title) + '"' : '') + '>' + esc(n.text) + '</span>';
+      case 'status': {
+        const s = STATE_MAP[n.state] || 'pending';
+        return '<span class="chip" style="margin-left:0" data-state="' + s + '"><span class="dot"></span>' + esc(n.text || n.state || '') + '</span>';
+      }
+      case 'stat':
+        return '<span class="ph-stat"' + (tone(n.tone) ? ' data-tone="' + tone(n.tone) + '"' : '') + '><b>' + esc(n.value) +
+               (n.unit ? '<i>' + esc(n.unit) + '</i>' : '') + '</b><small>' + esc(n.label) + '</small></span>';
+      case 'gauge': case 'progress': {
+        const pct = Math.max(0, Math.min(100, +n.pct || 0));
+        return '<span class="ph-gauge">' + (n.label ? '<span class="meta">' + esc(n.label) + '</span>' : '') +
+               usage(pct, esc(n.text || pct.toFixed(0) + '%')) + '</span>';
+      }
+      case 'kv':
+        return '<dl class="ph-kv">' + (n.rows || []).map(r => '<dt>' + esc(r[0]) + '</dt><dd>' + cell(r[1], ctx, depth) + '</dd>').join('') + '</dl>';
+      case 'link':
+        return okHref(n.href) ? '<a class="ph-link" href="' + esc(n.href) + '"' +
+               (/^https?:/i.test(n.href) ? ' target="_blank"' : '') + ' rel="noopener noreferrer">' + esc(n.text) + '</a>' : '';
+      case 'button':
+        return button(n, ctx);
+      case 'empty':
+        return '<div class="empty"><strong>' + esc(n.title || '') + '</strong><p>' + esc(n.text || '') + '</p></div>';
+      case 'stack':
+        return '<div class="ph-stack" data-dir="' + (n.dir === 'row' ? 'row' : 'col') + '">' + (n.children || []).map(c => rnode(c, ctx, depth + 1)).join('') + '</div>';
+      case 'columns':
+        return '<div class="ph-cols">' + (n.children || []).map(c => rnode(c, ctx, depth + 1)).join('') + '</div>';
+      case 'section':
+        return '<section class="ph-section">' + (n.title ? '<h4>' + esc(n.title) + '</h4>' : '') + (n.children || []).map(c => rnode(c, ctx, depth + 1)).join('') + '</section>';
+      case 'table': {
+        const cols = n.columns || [], acts = n.row_actions || [];
+        return '<div class="tablewrap"><div class="tscroll"><table class="ph-tbl"><thead><tr>' +
+          cols.map(c => '<th' + (c.align === 'right' ? ' style="text-align:right"' : '') + '>' + esc(c.label || c.key) + '</th>').join('') +
+          (acts.length ? '<th><span class="sr">Actions</span></th>' : '') + '</tr></thead><tbody>' +
+          ((n.rows || []).map(r => '<tr>' + cols.map(c =>
+            '<td' + (c.mono ? ' class="num"' : '') + (c.align === 'right' ? ' style="text-align:right"' : '') + '>' + cell(r[c.key], ctx, depth) + '</td>').join('') +
+            (acts.length ? '<td class="actions"><div class="btn-row">' + acts.map(a => button(a, ctx, { row: r._id != null ? r._id : null })).join('') + '</div></td>' : '') +
+            '</tr>').join('') || '<tr><td colspan="' + (cols.length + (acts.length ? 1 : 0)) + '"><div class="empty">No rows</div></td></tr>') +
+          '</tbody></table></div></div>';
+      }
+      default: return '';
+    }
+  }
+
+  /* ── Slots ───────────────────────────────────────────────────────────── */
+  function has(slot){ return !!(st.byslot[slot] && st.byslot[slot].length); }
+  function slot(name, key, cid){
+    const list = st.byslot[name];
+    if (!list || !list.length) return '';
+    if (cid && !list.some(c => c.id === cid)) return '';
+    return '<span class="ph-slot" data-slot="' + esc(name) + '" data-key="' + esc(key == null ? '' : key) + '"' + (cid ? ' data-cid="' + esc(cid) + '"' : '') + '></span>';
+  }
+  function renderContribution(c, key, slotName){
+    const d = st.data[c.id];
+    if (!d) return '';
+    if (!d.ok) return '<span class="ph-err" title="' + esc(c.plugin + ': ' + (d.error || 'error')) + '">!</span>';
+    const v = d.data || {};
+    let node;
+    if (v.keyed) { node = v.nodes && v.nodes[key]; if (!node) return ''; }
+    else node = v.node;
+    if (!node) return '';
+    const inner = rnode(node, { cid: c.id, plugin: c.plugin, key: key, n: { i: 0 } }, 0);
+    if (slotName === 'settings.card')
+      return '<div class="setcard plg-' + cls(c.plugin) + '" data-cid="' + esc(c.id) + '"><h3 class="group">' + esc(c.label || c.plugin) + '</h3>' + inner + '</div>';
+    return '<span class="ph-c plg-' + cls(c.plugin) + '">' + inner + '</span>';
+  }
+  function paintSlot(el){
+    const name = el.dataset.slot, key = el.dataset.key || '', only = el.dataset.cid;
+    let list = st.byslot[name] || [];
+    if (only) list = list.filter(c => c.id === only);
+    let html = '';
+    for (const c of list) {
+      try { html += renderContribution(c, key, name); }
+      catch (e) { html += '<span class="ph-err" title="render error">!</span>'; }
+    }
+    if (el._phHtml !== html) { el._phHtml = html; el.innerHTML = html; }
+  }
+  function paint(root){
+    if (SAFE) return;
+    (root || document).querySelectorAll('.ph-slot').forEach(paintSlot);
+  }
+
+  /* ── Containers: extra columns ───────────────────────────────────────── */
+  const cols = () => st.byslot['containers.column'] || [];
+  function colSig(){ return cols().map(c => c.id).join(','); }
+  function paintCtHead(){
+    const tr = $('#ct-body').closest('table').querySelector('thead tr');
+    tr.querySelectorAll('th.ph-th').forEach(t => t.remove());
+    const last = tr.lastElementChild;
+    cols().forEach(c => {
+      const th = document.createElement('th');
+      th.className = 'ph-th'; th.textContent = c.label || c.plugin;
+      tr.insertBefore(th, last);
+    });
+  }
+
+  /* ── Theme / CSS / layout ────────────────────────────────────────────── */
+  const TOKEN_OK = /^--[a-z0-9-]{1,32}$/, VALUE_BAD = /[;{}<>\\]|url\s*\(|@import|\/\*/i;
+  function themeCss(t){
+    if (!t || !t.tokens) return '';
+    let out = '';
+    ['dark', 'light'].forEach(mode => {
+      const rules = Object.entries(t.tokens[mode] || {})
+        .filter(([k, v]) => TOKEN_OK.test(k) && typeof v === 'string' && v.length <= 100 && !VALUE_BAD.test(v))
+        .map(([k, v]) => k + ':' + v).join(';');
+      if (rules) out += 'html:root[data-theme="' + mode + '"]{' + rules + '}';
+    });
+    return out;
+  }
+  function applyTheme(t){
+    const css = themeCss(t);
+    let el = document.getElementById('ph-theme');
+    if (!css) { if (el) el.remove(); try { localStorage.removeItem('pihub-plg-theme'); } catch (e) {} return; }
+    if (!el) { el = document.createElement('style'); el.id = 'ph-theme'; document.head.appendChild(el); }
+    if (el.textContent !== css) el.textContent = css;
+    try { localStorage.setItem('pihub-plg-theme', css); } catch (e) {}
+  }
+  function applyStyles(list){
+    const want = new Set();
+    (list || []).forEach(s => {
+      const id = 'ph-style-' + cls(s.id);
+      want.add(id);
+      let el = document.getElementById(id);
+      if (!el) { el = document.createElement('style'); el.id = id; el.dataset.phStyle = '1'; document.head.appendChild(el); }
+      if (el.textContent !== s.css) el.textContent = s.css;
+    });
+    $$('style[data-ph-style]').forEach(el => { if (!want.has(el.id)) el.remove(); });
+  }
+  function applyLayout(l){
+    const root = document.documentElement;
+    if (!l) { delete root.dataset.density; $$('.nav-item[data-ph-hide]').forEach(n => n.removeAttribute('data-ph-hide')); st.defaultView = ''; return; }
+    if (l.density) root.dataset.density = l.density; else delete root.dataset.density;
+    const nav = $('#sidebar'), anchor = $('.navhint', nav);
+    if (Array.isArray(l.nav_order) && l.nav_order.length) {
+      const items = $$('.nav-item', nav);
+      const first = l.nav_order.map(v => items.find(i => i.dataset.go === v)).filter(Boolean);
+      const rest = items.filter(i => !first.includes(i));
+      [...first, ...rest].forEach(el => nav.insertBefore(el, anchor));
+    }
+    $$('.nav-item', nav).forEach(n => {
+      if ((l.nav_hidden || []).includes(n.dataset.go) && n.dataset.go !== 'settings') n.setAttribute('data-ph-hide', '1');
+      else n.removeAttribute('data-ph-hide');
+    });
+    st.defaultView = l.default_view || '';
+  }
+
+  /* ── v2 tabs ─────────────────────────────────────────────────────────── */
+  const tabView = c => 'ph-' + c.id.replace('/', '--');
+  function renderTabs(){
+    const want = (st.byslot['tab'] || []);
+    $$('#sidebar .nav-item[data-ph-tab]').forEach(n => {
+      if (!want.some(c => tabView(c) === n.dataset.phTab)) {
+        const v = $('.view[data-view="' + n.dataset.phTab + '"]');
+        if (S.view === n.dataset.phTab) showView('hosts');
+        if (v) v.remove();
+        n.remove();
+      }
+    });
+    want.forEach(c => {
+      const vid = tabView(c);
+      if ($('#sidebar .nav-item[data-ph-tab="' + vid + '"]')) return;
+      const btn = document.createElement('button');
+      btn.className = 'nav-item'; btn.dataset.phTab = vid; btn.dataset.go = vid;
+      btn.innerHTML = (sanitizeSvg(c.icon_svg) ||
+        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M4 17 10 11 14 15 20 9"/><path d="M4 21h16"/></svg>') +
+        '<span>' + esc(c.label || c.plugin) + '</span>';
+      $('#sidebar').insertBefore(btn, $('#sidebar .navhint'));
+      const section = document.createElement('section');
+      section.className = 'view plg-' + cls(c.plugin); section.dataset.view = vid; section.hidden = S.view !== vid;
+      section.innerHTML = '<div class="viewhead"><h2>' + esc(c.label || c.plugin) + '</h2></div>' +
+        '<div class="ph-slot" data-slot="tab" data-key="" data-cid="' + esc(c.id) + '" style="display:block"></div>';
+      $('main').appendChild(section);
+    });
+  }
+
+  /* ── Manifest / data ─────────────────────────────────────────────────── */
+  function group(list){
+    const by = {};
+    list.forEach(c => (by[c.slot] = by[c.slot] || []).push(c));
+    return by;
+  }
+  function viewOf(c){
+    const s = c.slot;
+    if (s === 'header.pill') return '*';
+    if (s === 'tab') return tabView(c);
+    if (s === 'settings.card') return 'settings';
+    return s.split('.')[0];
+  }
+  function apply(m, first){
+    st.rev = m.rev; st.safeSrv = !!m.safe; st.opts = m.options || null;
+    st.contribs = m.contribs || [];
+    st.byslot = group(st.contribs);
+    st.data = Object.fromEntries(Object.entries(st.data).filter(([k]) => st.contribs.some(c => c.id === k)));
+    if (first) st.seq = m.toast_seq || 0;
+    applyTheme(m.theme); applyStyles(m.styles); applyLayout(m.layout);
+    if (m.safe) safeBanner('Safe mode is on — no plugins are loaded.');
+  }
+  function safeBanner(msg){
+    if ($('.ph-safe')) return;
+    const b = document.createElement('div');
+    b.className = 'ph-safe';
+    b.innerHTML = esc(msg) + ' <a href="/">Exit safe mode</a>';
+    document.body.insertBefore(b, document.body.firstChild);
+  }
+  async function fetchManifest(){
+    return apiFetch('/api/plugins/ui').then(r => r.json());
+  }
+  async function boot(){
+    if (SAFE) { safeBanner('Safe mode — plugin UI is disabled for this page load.'); applyTheme(null); return; }
+    try { apply(await fetchManifest(), true); st.sig = sigOf(); } catch (e) { /* plugins optional */ }
+  }
+  const sigOf = () => st.contribs.map(c => c.id + ':' + c.slot).join(',');
+  function rerenderCore(){
+    if (S.cfg && S.cfg.hosts) renderHosts(S.cfg.hosts);
+    if (S.cfg && S.cfg.services) {
+      renderServices(S.cfg.services);
+      if (S.cfg.proxmox && S.cfg.proxmox.enabled) renderProxmoxCard(S.cfg.proxmox);
+    }
+    paintContainers._sig = null;
+    if (S.containers && S.containers.length) paintContainers();
+    if (S.stacks && S.stacks.length) renderStacks(S.stacks);
+    pollHosts().catch(() => {}); pollServices().catch(() => {});
+  }
+  async function refresh(){
+    if (SAFE) return;
+    try {
+      const m = await fetchManifest();
+      const prevSig = st.sig;
+      apply(m, false);
+      st.sig = sigOf();
+      renderTabs();
+      if (prevSig !== st.sig) rerenderCore();
+      paint(document);
+      tick(true);
+      if (S.view === 'settings') { renderPlugins(); renderAppearance(); }
+    } catch (e) {}
+  }
+  function relevant(c){
+    const v = viewOf(c);
+    return v === '*' || v === S.view;
+  }
+  async function tick(force){
+    if (SAFE || document.hidden || st.busy) return;
+    const now = Date.now(), due = [];
+    st.contribs.forEach(c => {
+      if (!relevant(c)) return;
+      const last = st.last[c.id] || 0, every = c.poll * 1000;
+      if (!last || (every && now - last >= every)) due.push(c.id);
+    });
+    if (!due.length && !force && now - st.lastPoll < 10000) return;
+    st.busy = true; st.lastPoll = now;
+    try {
+      const url = '/api/plugins/contrib?ids=' + due.map(encodeURIComponent).join(',') + '&since=' + st.seq;
+      const d = await apiFetch(url).then(r => r.json());
+      due.forEach(id => { st.last[id] = Date.now(); });
+      Object.entries(d.data || {}).forEach(([id, v]) => { st.data[id] = v; });
+      (d.toasts || []).forEach(t => toast((t.plugin ? t.plugin + ': ' : '') + t.message, t.kind === 'err' ? 'err' : t.kind === 'ok' ? 'ok' : 'info'));
+      if (typeof d.toast_seq === 'number') st.seq = d.toast_seq;
+      paint(document);
+      if (typeof d.rev === 'number' && d.rev !== st.rev) { st.busy = false; await refresh(); }
+    } catch (e) { /* transient */ }
+    st.busy = false;
+  }
+  function afterBoot(){
+    if (SAFE || st.booted) return;
+    st.booted = true;
+    renderTabs();
+    paint(document);
+    tick(true);
+    setInterval(() => tick(false), 5000);
+  }
+  function onView(v){ if (!SAFE && st.booted) { paint(document); tick(false); } }
+
+  /* ── Actions ─────────────────────────────────────────────────────────── */
+  function runAction(a, b){
+    const go = (extra) => {
+      const url = '/api/plugin/' + encodeURIComponent(a.plugin) + '/' + a.action.split('/').map(encodeURIComponent).join('/');
+      const body = Object.assign({ key: a.key }, a.row != null ? { row: a.row } : {}, extra || {});
+      const opts = { method: a.method };
+      let u = url;
+      if (a.method === 'GET' || a.method === 'DELETE') {
+        u += '?' + new URLSearchParams(Object.entries(body).map(([k, v]) => [k, String(v)])).toString();
+      } else { opts.headers = { 'Content-Type': 'application/json' }; opts.body = JSON.stringify(body); }
+      if (b) b.disabled = true;
+      return apiFetch(u, opts).then(r => r.json()).then(d => {
+        if (b) b.disabled = false;
+        if (d.error) { toast(d.error, 'err'); return d.error; }
+        toast(d.message || 'Done', 'ok');
+        st.last[a.cid] = 0; tick(true);
+        return null;
+      }).catch(() => { if (b) b.disabled = false; toast('Request failed', 'err'); return 'Request failed'; });
+    };
+    if (a.fields && a.fields.length) { openPluginForm(a.plugin, a.action, a.fields, { title: a.label, submit: go }); return; }
+    if (a.confirm) { confirmAction(a.label || 'Confirm', a.confirm, () => go()); return; }
+    go();
+  }
+  document.addEventListener('click', e => {
+    const b = e.target.closest('button[data-phact]');
+    if (!b || b.disabled) return;
+    const a = st.acts.get(b.dataset.phact);
+    if (a) runAction(a, b);
+  });
+
+  /* ── Settings: appearance ────────────────────────────────────────────── */
+  function renderAppearance(){
+    const el = $('#ph-appearance');
+    if (!el) return;
+    const o = st.opts;
+    if (!o || (!o.themes.length && !o.layouts.length)) { el.innerHTML = ''; return; }
+    const sel = (name, list, cur) => '<select class="fsort" data-phapp="' + name + '"><option value="">— none —</option>' +
+      list.map(x => '<option value="' + esc(x.id) + '"' + (x.id === cur ? ' selected' : '') + '>' + esc(x.label) + '</option>').join('') + '</select>';
+    el.innerHTML = '<h3 class="group" style="margin-top:20px">Appearance</h3>' +
+      (o.themes.length ? '<div class="scanrow"><strong>Theme</strong>' + sel('theme', o.themes, o.active.theme) + '</div>' : '') +
+      (o.layouts.length ? '<div class="scanrow"><strong>Layout</strong>' + sel('layout', o.layouts, o.active.layout) + '</div>' : '') +
+      '<p class="hint">Only one plugin theme and one layout can be active. The light/dark switch in the header still works.</p>';
+  }
+  document.addEventListener('change', async e => {
+    const s = e.target.closest('select[data-phapp]');
+    if (!s) return;
+    const body = {}; body[s.dataset.phapp] = s.value;
+    const d = await apiFetch('/api/config/plugins/appearance', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+      .then(r => r.json()).catch(() => ({ error: 'Request failed' }));
+    if (d.error) toast(d.error, 'err'); else toast('Appearance saved', 'ok');
+    refresh();
+  });
+
+  // Badges get their own row under the title (a long name would be squeezed
+  // by inline badges); the row hides itself while empty.
+  const badgeRow = (name, key) => has(name) ? '<div class="ph-badges">' + slot(name, key) + '</div>' : '';
+  return { boot, afterBoot, refresh, paint, slot, badgeRow, has, cols, colSig, paintCtHead, onView, tick,
+           get safe(){ return SAFE; }, get defaultView(){ return st.defaultView; },
+           get opts(){ return st.opts; }, renderAppearance, _st: st };
+})();
+
+/* ── Permission descriptions (consent dialog) ──────────────────────────── */
+const CAP_INFO = {
+  'hosts.read':      ['Read your hosts list', 0],
+  'hosts.wake':      ['Send Wake-on-LAN packets to your hosts', 1],
+  'services.read':   ['Read your services list', 0],
+  'proxmox.read':    ['Read Proxmox containers and instances', 0],
+  'proxmox.control': ['Start, stop and reboot Proxmox containers', 1],
+  'dockge.read':     ['Read Dockge stacks', 0],
+  'ssh.execute':     ['Run commands over SSH (container commands only) and power actions', 1],
+  'ui.tab':          ['Add its own tab to the sidebar', 0],
+  'ui.slots':        ['Add badges, columns, buttons and banners to the standard tabs', 0],
+  'ui.header':       ['Add a status pill to the header', 0],
+  'ui.settings':     ['Add a card to Settings (admins only)', 0],
+  'ui.theme':        ['Offer a colour theme for the whole UI', 0],
+  'ui.style':        ['Add CSS scoped to its own elements', 0],
+  'ui.style.global': ['Add CSS that can restyle the ENTIRE UI (can hide or fake elements)', 1],
+  'ui.layout':       ['Change navigation order, hidden sections and default view', 0],
+  'ui.frame':        ['Run its own JavaScript in a sandboxed frame', 1],
+};
+
 /* ── Plugin tabs (v8: generic renderer for plugin TabUIDefs) ──────── */
 
 const plgTabTimers = {};
 const plgTabData = {};
+const plgTabMeta = {};
 // Action id -> field schema, keyed "pluginName/actionId" (7.7: form
 // dialogs for plugin actions that declare `fields`).
 const plgActionFields = {};
@@ -2101,6 +2676,7 @@ function pluginTabHtml(id, label, content){
 async function renderPluginTabs(){
   // Called on boot + whenever plugins change.  Adds sidebar entries and
   // view sections for every loaded plugin that declares a TabUIDef.
+  if (PH.safe) return;   // ?safe=1: no plugin UI of any kind
   try {
     const plugins = await apiFetch('/api/plugins/list').then(r => r.json());
     const tabs = [];
@@ -2122,8 +2698,16 @@ async function renderPluginTabs(){
         if (S.view === id) showView('hosts');
       }
     });
+    tabs.sort((a, b) => (a.tab.position ?? 99) - (b.tab.position ?? 99));
     tabs.forEach(({ name, tab }) => {
       const id = tab.id;
+      // Refresh action metadata (an upgraded plugin may have new actions/fields)
+      // even when the tab already exists — the old code kept stale metadata.
+      (tab.actions || []).forEach(a => {
+        if (a.fields && a.fields.length) plgActionFields[name + '/' + a.id] = a.fields;
+        else delete plgActionFields[name + '/' + a.id];
+      });
+      plgTabMeta[id] = { name, tab };
       if ($('#sidebar .nav-item[data-plg-tab="' + esc(id) + '"]')) return;  // already rendered
       // Register form-dialog actions (fields schema) for the click handler.
       (tab.actions || []).forEach(a => {
@@ -2156,8 +2740,12 @@ async function pollPluginTab(name, tab){
   try {
     const d = await apiFetch(tab.poll_endpoint).then(r => r.json());
     if (d.error){ box.innerHTML = '<p class="hint">' + esc(d.error) + '</p>'; return; }
-    plgTabData[tab.id] = d;
-    box.innerHTML = renderPluginTabData(name, tab, d);
+    // Only rewrite when the data changed: a blind innerHTML swap every 10 s
+    // dropped text selection and focus inside the tab.
+    const sig = JSON.stringify(d) + '|' + JSON.stringify((plgTabMeta[tab.id] || {}).tab || tab);
+    if (plgTabData[tab.id] && plgTabData[tab.id].sig === sig) return;
+    plgTabData[tab.id] = { sig, d };
+    box.innerHTML = renderPluginTabData(name, (plgTabMeta[tab.id] || {}).tab || tab, d);
   } catch(e) { /* transient — keep last render */ }
 }
 
@@ -2165,8 +2753,10 @@ function renderPluginTabData(name, tab, d){
   // Generic renderer: list the top-level JSON fields as rows; arrays of
   // dicts render as a table.  Plugin authors keep payloads simple.
   let html = '';
-  const actions = (tab.actions || []).map(a =>
-    '<button class="btn btn-primary btn-sm" data-plgact="' + esc(a.id) + '" data-plgname="' + esc(name) + '">' + esc(a.label) + '</button>'
+  const isAdmin = window.USER && window.USER.role === 'admin';
+  const actions = (tab.actions || []).filter(a => isAdmin || !(a.caps || []).includes('admin')).map(a =>
+    '<button class="btn btn-sm ' + ({ primary:'btn-primary', ok:'btn-ok', bad:'btn-bad', quiet:'btn-quiet', secondary:'btn-quiet' }[a.style] || 'btn-primary') +
+    '" data-plgact="' + esc(a.id) + '" data-plgname="' + esc(name) + '">' + esc(a.label) + '</button>'
   ).join('');
   if (actions) html += '<div class="btn-row" style="margin-bottom:12px">' + actions + '</div>';
   if (typeof d === 'object' && d !== null && !Array.isArray(d)){
@@ -2224,38 +2814,57 @@ document.addEventListener('click', e => {
     .catch(() => { b.disabled = false; toast('Request failed', 'err'); });
 });
 
-/* ── Plugin form dialog (7.7: actions with `fields`) ──────────────── */
-let pfActive = null;   // {name, actionId, fields}
+/* ── Plugin form dialog (7.7: actions with `fields`; 8.0: select fields,
+   prefilled values, `submit` callback used by v2 buttons + Configure) ── */
+let pfActive = null;   // {name, actionId, fields, opts}
 
-function openPluginForm(name, actionId, fields){
-  pfActive = { name, actionId, fields };
-  $('#pf-title').textContent = 'Configure ' + name;
+function openPluginForm(name, actionId, fields, opts){
+  opts = opts || {};
+  pfActive = { name, actionId, fields, opts };
+  $('#pf-title').textContent = opts.title || ('Configure ' + name);
   const box = $('#pf-fields');
   box.innerHTML = '';
   fields.forEach(f => {
     const row = document.createElement('label');
     row.className = 'scanrow';
-    row.style.cssText = 'display:flex;align-items:center;gap:10px;margin:6px 0';
+    row.style.cssText = 'display:flex;align-items:center;gap:10px;margin:6px 0;flex-wrap:wrap';
     const label = document.createElement('span');
     label.className = 'srcc';
     label.style.flex = '1';
     label.textContent = f.label || f.name;
     row.appendChild(label);
+    const cur = opts.values && opts.values[f.name] !== undefined ? opts.values[f.name] : f.default;
     if (f.type === 'checkbox'){
       const cb = document.createElement('input');
       cb.type = 'checkbox';
       cb.name = f.name;
-      cb.checked = !!f.default;
+      cb.checked = !!cur;
       row.appendChild(cb);
+    } else if (f.type === 'select'){
+      const sel = document.createElement('select');
+      sel.name = f.name;
+      (f.options || []).forEach(o => {
+        const op = document.createElement('option');
+        op.value = o; op.textContent = o;
+        if (String(cur) === String(o)) op.selected = true;
+        sel.appendChild(op);
+      });
+      row.appendChild(sel);
     } else {
       const inp = document.createElement('input');
       inp.type = f.type === 'number' ? 'number'
                : f.type === 'password' ? 'password' : 'text';
       inp.name = f.name;
       inp.placeholder = f.placeholder || '';
-      if (f.default !== undefined && f.default !== null)
-        inp.value = String(f.default);
+      if (cur !== undefined && cur !== null && f.type !== 'password')
+        inp.value = String(cur);
       row.appendChild(inp);
+    }
+    if (f.help){
+      const h = document.createElement('span');
+      h.className = 'hint'; h.style.cssText = 'flex-basis:100%;margin:0';
+      h.textContent = f.help;
+      row.appendChild(h);
     }
     box.appendChild(row);
   });
@@ -2265,7 +2874,7 @@ function openPluginForm(name, actionId, fields){
 
 function pfSubmit(){
   if (!pfActive) return;
-  const { name, actionId, fields } = pfActive;
+  const { name, actionId, fields, opts } = pfActive;
   const body = {};
   fields.forEach(f => {
     const el = $('#pf-fields').querySelector('[name="' + CSS.escape(f.name) + '"]');
@@ -2273,6 +2882,15 @@ function pfSubmit(){
     body[f.name] = f.type === 'checkbox' ? el.checked : el.value;
   });
   $('#pf-ok').disabled = true;
+  if (opts.submit){
+    // callback returns null on success or an error string (keeps the dialog open)
+    Promise.resolve(opts.submit(body)).then(err => {
+      $('#pf-ok').disabled = false;
+      if (err) { $('#pf-hint').textContent = err; return; }
+      $('#plgform').close();
+    }).catch(() => { $('#pf-ok').disabled = false; $('#pf-hint').textContent = 'Request failed'; });
+    return;
+  }
   apiFetch('/api/plugin/' + encodeURIComponent(name) + '/' + encodeURIComponent(actionId), {
     method:'POST',
     headers:{ 'Content-Type': 'application/json' },
@@ -2604,6 +3222,8 @@ function skeletons(sel, n){
   if (S.cfg.title) { document.title = S.cfg.title; $('h1').textContent = S.cfg.title; }
   if (S.cfg.proxmox) $('#ct-title').textContent = 'Proxmox containers · ' + (S.cfg.proxmox.host || 'proxmox');
 
+  await PH.boot();                     // 8.0: plugin manifest first, so the first render already has its slots
+
   // Start polls before rendering — network calls overlap with DOM work
   loop('hosts',      pollHosts,       5000);
   loop('services',   pollServices,   10000);
@@ -2613,8 +3233,9 @@ function skeletons(sel, n){
   renderHosts(S.cfg.hosts || []);
   renderServices(S.cfg.services || []);
   if (S.cfg.proxmox && S.cfg.proxmox.enabled) renderProxmoxCard(S.cfg.proxmox);
-  showView('hosts');
-  renderPluginTabs();                  // v8: plugin-contributed sidebar tabs
+  showView(PH.defaultView || 'hosts');
+  renderPluginTabs();                  // v8: plugin-contributed sidebar tabs (API v1)
+  PH.afterBoot();                      // 8.0: contribution polling + v2 tabs
 
   // v7: auto-add toggle — surface scan results (dockge auto-addable) on load
   if (window.USER.role === 'admin' && S.cfg.scan && S.cfg.scan.auto_add) runScan();
