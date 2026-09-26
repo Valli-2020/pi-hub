@@ -133,7 +133,7 @@ def get_tasks(self):
   `GET /api/task/plugin:<name>:<task>`.
 - **Single-flight** (refuse concurrent runs): guard with a lock and return
   `409 Already running`.
-- `ctx.toast(message, kind)` shows a toast to every connected UI
+- `ctx.toast(message, kind)` shows a toast in every connected admin UI
   (`info` / `ok` / `err`).
 
 ---
@@ -387,7 +387,7 @@ capability raises `PermissionError`.
 | `proxmox_action(instance_id, vmid, action)` | `proxmox.control` | Start/stop/reboot containers |
 | `run_task(name, fn, interval=0)` | — | Background task |
 | `set_task_status` / `get_task_status` | — | Task progress |
-| `toast(message, kind)` | — | Toast in every connected UI |
+| `toast(message, kind)` | — | Toast in every connected admin UI |
 | `get_config()` / `save_config()` | — | Your `config.json` |
 | `register_static(url_path, file_path)` | — | Serve a file from `static/` (`/plugin-static/<name>/…`, auth required) |
 | `request_restart(tag)` | — | Ask the core to restart |

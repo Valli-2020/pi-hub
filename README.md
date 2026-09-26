@@ -128,7 +128,7 @@ approve what the plugin asks for.
   as JSON nodes; own JavaScript runs only in an opaque-origin iframe
 - The dashboard is served with a hash-pinned Content-Security-Policy
 - Plugin Python still runs in-process — install only plugins you trust
-- Plugin names reject `.`/`..`; extraction is allowlist-only with a
+- Plugin names reject `.`/`..`; names ending in `.json` are refused; extraction is allowlist-only with a
   compile gate
 - Plugin store routes require a real admin session even when auth is
   disabled
