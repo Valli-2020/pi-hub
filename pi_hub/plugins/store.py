@@ -64,11 +64,54 @@ MAX_REDIRECTS = 5
 UA = "pi-hub-plugin-store/7.2"
 
 # Extraction allowlist — deny-by-default: NOTHING else is extracted.
+#
+#   top level   __init__.py, config.json, pihub-plugin.json, README.md, LICENSE
+#               and any <identifier>.py module
+#   subpackage  <identifier>/<identifier>.py (ONE level — no deeper trees)
+#   static/**   assets served by /plugin-static/; static/frame/** is what a
+#               sandboxed frame may load, so it is limited to inert file
+#               types (no .html/.svgz/.wasm) and to a size budget.
+# Dotfiles, __pycache__ and *.pyc never extract.
 _ALLOWED = {
     "__init__.py",
     "config.json",
+    "pihub-plugin.json",
+    "README.md",
+    "LICENSE",
 }
 _ALLOWED_PREFIXES = ("static/",)
+_IDENT_PY_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*\.py$")
+_IDENT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+FRAME_EXTS = (".js", ".css", ".svg", ".png", ".json", ".woff2")
+MAX_FRAME_FILE = 512 * 1024
+MAX_FRAME_TOTAL = 2 * 1024 * 1024
+MAX_PLUGIN_FILES = 300
+
+
+def _classify(rel: str) -> Tuple[bool, str | None, str]:
+    """Return ``(extract, error, kind)`` for a plugin-relative path.
+
+    ``extract`` False with ``error`` None means "silently skip"; an error
+    aborts the install.  ``kind`` is ``"frame"`` for static/frame files.
+    """
+    parts = rel.split("/")
+    if any(p.startswith(".") for p in parts) or "__pycache__" in parts or rel.endswith(".pyc"):
+        return False, None, ""
+    if rel in _ALLOWED:
+        return True, None, ""
+    if len(parts) == 1 and _IDENT_PY_RE.match(parts[0]):
+        return True, None, ""
+    if len(parts) == 2 and _IDENT_RE.match(parts[0]) and parts[0] != "static" \
+            and _IDENT_PY_RE.match(parts[1]):
+        return True, None, ""
+    if rel.startswith(_ALLOWED_PREFIXES):
+        if rel.startswith("static/frame/"):
+            if not rel.lower().endswith(FRAME_EXTS):
+                return False, f"frame file type not allowed: {rel}", "frame"
+            return True, None, "frame"
+        return True, None, ""
+    return False, None, ""
+
 
 _SOURCE_ID_RE = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
 # Plugin names must not be "." or ".." (or any all-dots string) — those
@@ -590,9 +633,18 @@ def _extract_member(tf: tarfile.TarFile, member: tarfile.TarInfo,
         return 0, None
     if ".." in rel.split("/") or rel.startswith("/"):
         return 0, "unsafe path in archive"
-    allowed = rel in _ALLOWED or rel.startswith(_ALLOWED_PREFIXES)
+    allowed, err, kind = _classify(rel)
+    if err:
+        return 0, err
     if not allowed:
         return 0, None
+    # budget = [expanded bytes, extracted files, frame bytes]
+    budget.extend([0] * (3 - len(budget)))
+    budget[1] += 1
+    if budget[1] > MAX_PLUGIN_FILES:
+        return -1, f"plugin has too many files (>{MAX_PLUGIN_FILES})"
+    if kind == "frame" and member.size > MAX_FRAME_FILE:
+        return -1, f"frame file too large (>{MAX_FRAME_FILE // 1024} KB): {rel}"
     out = os.path.join(dest_dir, *rel.split("/"))
     os.makedirs(os.path.dirname(out), exist_ok=True)
     src = tf.extractfile(member)
@@ -608,6 +660,10 @@ def _extract_member(tf: tarfile.TarFile, member: tarfile.TarInfo,
             budget[0] += len(chunk)
             if budget[0] > MAX_EXPANDED:
                 return -1, "archive expands beyond the size limit"
+            if kind == "frame":
+                budget[2] += len(chunk)
+                if written > MAX_FRAME_FILE or budget[2] > MAX_FRAME_TOTAL:
+                    return -1, "frame files exceed the size limit"
             f.write(chunk)
     os.chmod(out, 0o644)
     return written, None
@@ -715,6 +771,11 @@ def _install_locked(source_id: str, name: str, version: str) -> Tuple[bool, str]
                 except py_compile.PyCompileError as e:
                     shutil.rmtree(staging, ignore_errors=True)
                     return False, f"plugin does not compile: {e}"
+    # The gate wrote __pycache__ next to the sources; ship sources only.
+    for dirpath, dirs, _files in os.walk(staging):
+        for d in [d for d in dirs if d == "__pycache__"]:
+            shutil.rmtree(os.path.join(dirpath, d), ignore_errors=True)
+            dirs.remove(d)
 
     # 3. Swap into place — only now touch the live install (upgrade
     #    path: disable old, park it, replace with the staged tree).
