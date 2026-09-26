@@ -3,6 +3,50 @@
 All notable changes to Pi Hub are documented here. Every release ships a
 changelog entry AND matching GitHub release notes.
 
+## [8.1.0] - 2026-09-26
+
+**A polished dashboard.** Same features, calmer and more consistent UI, and
+a handful of long-standing display bugs fixed. Only `web/index.html`
+changes; plugins, themes and the API are untouched.
+
+### Fixed
+
+- Settings cards, scan rows, banners and inputs had no background: the CSS
+  used `--card` and `--raised`, which were never defined. Both are now
+  aliases of real tokens.
+- The first-run setup screen was unstyled (it used class names that did
+  not exist), and the login inputs had no spacing.
+- Table column widths applied to every table and were off by one after the
+  Host column was added: containers were misaligned and the Users headers
+  overlapped. Widths now apply to the containers table only.
+- Proxmox instance fields in Settings were squeezed to one character.
+- Hint texts were unstyled outside the caps dialog, and the status dots in
+  the plugin list were invisible.
+- The edit dialog had no field labels once values were filled in; add and
+  edit dialogs now label every field.
+- IP addresses on host cards wrapped in the middle of a number.
+
+### Changed
+
+- **Header:** status dots on the up/down pills, a live indicator that turns
+  amber after 20 s and red after 60 s without fresh data, avatar badge.
+- **Sidebar:** accent rail on the active section, divider before plugin
+  tabs; on phones the nav scrolls with faded edges.
+- **Cards:** edit and delete are small icon buttons, "Open" is a calm
+  button instead of a full-width accent bar, the service name opens the
+  service, offline icons are desaturated.
+- **Containers:** tags on one line (all of them on hover), usage bars in
+  three levels (green, amber from 65 %, red from 85 %).
+- **Users and Dockge:** avatar and role pill, readable dates; running
+  stacks first.
+- **Settings:** switches instead of checkboxes, wide cards for Proxmox and
+  plugins, a save bar that stays in view.
+- **Dialogs and toasts:** enter animation and footer bar; toasts get a
+  dismiss button and a timeout bar that pauses on hover.
+- New design tokens (`--r-xs`, `--r-md`, `--ease`, `--dur`, `--field`,
+  `--ring`, `--shadow-lg`) are additive; existing theme plugins keep
+  working. `prefers-reduced-motion` is respected.
+
 ## [8.0.0] - 2026-09-26
 
 **Plugin API v2.** Plugins can now change the standard tabs and the whole
