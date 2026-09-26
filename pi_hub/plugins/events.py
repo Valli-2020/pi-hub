@@ -12,7 +12,7 @@ event               capability        payload
 ==================  ================  ==========================================
 ``host.state``      ``hosts.read``    ``{host_id, old, new}``
 ``container.state`` ``proxmox.read``  ``{instance, vmid, name, old, new}``
-``scan.complete``   ``services.read`` ``{added, total}``
+``scan.complete``   ``services.read`` ``{candidates}``
 ``config.changed``  (none)            ``{}``
 ==================  ================  ==========================================
 """
@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import queue
 import threading
+import time
 import traceback
 from typing import Any, Callable, Dict, List, Tuple
 
@@ -55,6 +56,8 @@ def subscribe(plugin: str, events: List[str], fn: Callable[[str, dict], None],
             granted.append(ev)
     if granted:
         _ensure_thread()
+        if "host.state" in granted or "container.state" in granted:
+            _ensure_watcher()
     return granted
 
 
@@ -112,7 +115,92 @@ def _dispatch_loop() -> None:
                 traceback.print_exc()
 
 
+# ── Change detection ─────────────────────────────────────────────────────
+# The core feeds every fresh probe result through these two helpers, so
+# events fire no matter which request (or the watcher) triggered the probe.
+# The first observation only seeds the baseline — no event for it.
+
+_state_lock = threading.Lock()
+_host_last: Dict[str, str] = {}
+_ct_last: Dict[Tuple[str, str], str] = {}
+
+
+def note_hosts(status: Dict[str, Dict[str, Any]]) -> None:
+    """Diff ``hosts.get_all_status()`` output; emit ``host.state``."""
+    if not has_subscribers("host.state"):
+        return
+    changes = []
+    with _state_lock:
+        for hid, rec in status.items():
+            new = "up" if rec.get("online") else "down"
+            old = _host_last.get(hid)
+            _host_last[hid] = new
+            if old is not None and old != new:
+                changes.append({"host_id": hid, "old": old, "new": new})
+    for c in changes:
+        emit("host.state", c)
+
+
+def note_containers(instance: str, containers: List[dict]) -> None:
+    """Diff one Proxmox instance's container list; emit ``container.state``."""
+    if not has_subscribers("container.state"):
+        return
+    changes = []
+    with _state_lock:
+        for ct in containers:
+            key = (instance, str(ct.get("vmid", "")))
+            new = str(ct.get("status", "unknown"))
+            old = _ct_last.get(key)
+            _ct_last[key] = new
+            if old is not None and old != new:
+                changes.append({"instance": instance, "vmid": key[1],
+                                "name": str(ct.get("name", "")), "old": old, "new": new})
+    for c in changes:
+        emit("container.state", c)
+
+
+# ── Watcher ──────────────────────────────────────────────────────────────
+# Probes happen on demand while somebody has the dashboard open.  A plugin
+# that reacts to state changes needs them while nobody does, so a watcher
+# probes hosts every 30 s and containers every 60 s — but only while at
+# least one plugin subscribes to the matching event.
+
+HOST_INTERVAL = 30.0
+CONTAINER_INTERVAL = 60.0
+_watcher: threading.Thread | None = None
+
+
+def _ensure_watcher() -> None:
+    global _watcher
+    with _lock:
+        if _watcher is not None and _watcher.is_alive():
+            return
+        _watcher = threading.Thread(target=_watch_loop, name="plugin-watcher", daemon=True)
+        _watcher.start()
+
+
+def _watch_loop() -> None:
+    next_host = next_ct = 0.0
+    while True:
+        time.sleep(1.0)
+        now = time.monotonic()
+        try:
+            if now >= next_host and has_subscribers("host.state"):
+                next_host = now + HOST_INTERVAL
+                from .. import hosts
+                hosts.get_all_status()            # feeds note_hosts()
+            if now >= next_ct and has_subscribers("container.state"):
+                next_ct = now + CONTAINER_INTERVAL
+                from .. import proxmox
+                proxmox.fetch_proxmox_containers("")   # feeds note_containers()
+        except Exception:
+            traceback.print_exc()
+
+
 def _reset_for_tests() -> None:
+    with _state_lock:
+        _host_last.clear()
+        _ct_last.clear()
     with _lock:
         _subs.clear()
     while True:

@@ -16,6 +16,7 @@ from typing import Any, Dict, List, Optional
 
 from pi_hub.config import Host, find_host_by_id, get_hosts
 from pi_hub.net import POOL, parallel_map, ping, send_wol, tcp_ping  # noqa: F401 — re-exported
+from pi_hub.plugins import events as plugin_events
 
 # ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -496,4 +497,5 @@ def get_all_status() -> Dict[str, Dict[str, Any]]:
         hid = host.get("id", "")
         result[hid] = _build_status(host, basic_list[idx], online_by_id)
 
+    plugin_events.note_hosts(result)
     return result

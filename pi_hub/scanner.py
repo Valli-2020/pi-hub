@@ -29,6 +29,7 @@ import subprocess
 from typing import Any, Dict, List, Optional, Tuple
 
 from pi_hub.config import find_host_by_id, get_config
+from pi_hub.plugins import events as plugin_events
 
 # ── Hardcoded scan sources (v7 #4 — never config-driven paths) ──────────────
 NGINX_STREAMS_PATH = "/etc/nginx/streams.conf"
@@ -392,6 +393,7 @@ def run_scan() -> Dict[str, Any]:
                 })
 
     candidates.sort(key=lambda c: (str(c.get("host", "")), c.get("port", 0)))
+    plugin_events.emit("scan.complete", {"candidates": len(candidates)})
     return {"success": True, "candidates": candidates}
 
 

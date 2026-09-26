@@ -164,6 +164,8 @@ def save_config(cfg: Dict[str, Any]) -> bool:
         _cache_mtime = 0.0
         # NOTE: _cache_ts intentionally left stale — the 1 Hz throttle is
         # gated on `if _cache`, which is now empty, so the next load passes.
+    from pi_hub.plugins import events as plugin_events   # lazy: plugins import config
+    plugin_events.emit("config.changed", {})
     return True
 
 

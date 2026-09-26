@@ -31,6 +31,7 @@ from typing import Any, Dict, Optional
 
 from pi_hub.config import has_proxmox, proxmox_host, proxmox_instances, \
     proxmox_node, proxmox_token
+from pi_hub.plugins import events as plugin_events
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # Constants
@@ -373,6 +374,7 @@ def _fetch_instance(instance_id: str) -> Dict[str, Any]:
             _containers_cache[instance_id] = deepcopy(result)
             _containers_cache_ts[instance_id] = time.monotonic()
             _record_success(instance_id)
+        plugin_events.note_containers(instance_id, containers)
     except Exception as exc:
         result = {"success": False, "error": str(exc)}
         with _cache_lock:
