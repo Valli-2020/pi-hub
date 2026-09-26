@@ -38,10 +38,6 @@
     --accent:        oklch(75% 0.14 68);
     --accent-hover:  oklch(81% 0.14 68);
     --accent-ink:    oklch(20% 0.04 68);
-    /* Link orange — deliberately redder than --accent so a service link never
-       reads as the accent-filled Open button next to it. */
-    --link:          oklch(75% 0.145 48);
-    --link-hover:    oklch(82% 0.14 48);
     --ok:            oklch(73% 0.15 152);
     --warn:          oklch(79% 0.14 82);
     --bad:           oklch(67% 0.17 25);
@@ -77,8 +73,6 @@
     --accent:        oklch(56% 0.14 60);
     --accent-hover:  oklch(50% 0.15 58);
     --accent-ink:    oklch(100% 0 0);
-    --link:          oklch(52% 0.155 45);
-    --link-hover:    oklch(46% 0.16 43);
     --ok:            oklch(52% 0.14 152);
     --warn:          oklch(60% 0.14 82);
     --bad:           oklch(54% 0.18 25);
@@ -226,8 +220,6 @@
   .card .top { display:flex; align-items:center; gap:11px; min-width:0; }
   .card h4 { margin:0; font-size:14.5px; font-weight:620; letter-spacing:-.01em; min-width:0;
              overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  .card h4 a { color:var(--link); text-decoration:none; }
-  .card h4 a:hover { color:var(--link-hover); }
   .icon { width:34px; height:34px; flex:none; border-radius:10px; display:grid; place-items:center;
           background:linear-gradient(160deg, var(--surface-2), color-mix(in oklab, var(--surface-2) 60%, var(--bg)));
           border:1px solid var(--border); color:var(--accent); box-shadow:var(--hl); }
@@ -1806,7 +1798,7 @@ function renderServices(services){
     const origin = (s.host ? esc(s.host) + (s.source ? ' · ' + esc(s.source) : '') : (s.source ? esc(s.source) : ''));
     const card = cardShell('svc-' + id, [s.name, s.url, s.host || '', s.source || ''].join(' '));
     card.innerHTML =
-      '<div class="top">' + iconTile(s.icon) + '<h4><a href="' + esc(s.url) + '" target="_blank" rel="noopener">' + esc(s.name) + '</a></h4>' + chip('pending', 'sdot-' + id) + '</div>' + PH.badgeRow('services.card.badges', s.name) +
+      '<div class="top">' + iconTile(s.icon) + '<h4>' + esc(s.name) + '</h4>' + chip('pending', 'sdot-' + id) + '</div>' + PH.badgeRow('services.card.badges', s.name) +
       '<div class="meta">' + esc(String(s.url).replace(/^https?:\/\//,'')) + '</div>' +
       (origin ? '<div class="meta"><span class="tagpill">' + origin + '</span></div>' : '') +
       '<div class="btn-row">' +
