@@ -1,0 +1,10 @@
+{
+  "name": "host-insights",
+  "version": "1.0.0",
+  "description": "Latency and flapping badges on host cards, a CPU column in Containers, a header pill and an overview tab (Plugin API v2 demo)",
+  "min_core_version": "8.0.0",
+  "plugin_api_version": 2,
+  "author": "Pi Hub",
+  "license": "MIT",
+  "capabilities": ["hosts.read", "proxmox.read", "ui.slots", "ui.header", "ui.settings", "ui.tab", "ui.style"]
+}
