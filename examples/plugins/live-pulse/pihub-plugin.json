@@ -1,0 +1,10 @@
+{
+  "name": "live-pulse",
+  "version": "1.0.0",
+  "description": "Live latency sparklines and an event log in sandboxed frames (Plugin API v2 demo: ui.frame)",
+  "min_core_version": "8.0.0",
+  "plugin_api_version": 2,
+  "author": "Pi Hub",
+  "license": "MIT",
+  "capabilities": ["hosts.read", "ui.frame", "ui.slots"]
+}

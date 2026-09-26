@@ -1,0 +1,11 @@
+body { padding: 12px 14px; }
+h4 { margin: 0 0 8px; font-size: 12px; letter-spacing: .04em; text-transform: uppercase; color: var(--muted, #666); }
+.row { display: grid; grid-template-columns: 130px 1fr 70px; align-items: center; gap: 10px; padding: 3px 0; }
+.row .name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.row .ms { text-align: right; font-family: ui-monospace, monospace; font-variant-numeric: tabular-nums; }
+.row .ms.bad { color: var(--bad, #b91c1c); }
+canvas { width: 100%; height: 28px; display: block; }
+.log { margin-top: 14px; font: 12px/1.5 ui-monospace, monospace; background: var(--surface-2, #f3f3f3);
+       border: 1px solid var(--border, #ddd); border-radius: 8px; padding: 8px 10px; max-height: 220px; overflow: auto; }
+.log div { white-space: pre-wrap; overflow-wrap: anywhere; }
+.empty { color: var(--muted, #666); }
