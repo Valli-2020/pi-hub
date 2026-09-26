@@ -170,7 +170,7 @@ def _fields(raw: Any) -> List[dict]:
         if not isinstance(f, dict):
             raise ContribError("field must be an object")
         name = _str(f.get("name"), "field.name", True, 64)
-        if not re.match(r"^[A-Za-z_][A-Za-z0-9_]{0,63}$", name):
+        if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]{0,63}", name):
             raise ContribError("invalid field name")
         ftype = f.get("type", "text")
         if ftype not in FIELD_TYPES:
@@ -191,7 +191,7 @@ def _fields(raw: Any) -> List[dict]:
 
 def _button(n: dict, b: _Budget, depth: int) -> dict:
     action = _str(n.get("action"), "button.action", True, 200)
-    if not ACTION_RE.match(action) or ".." in action.split("/"):
+    if not ACTION_RE.fullmatch(action) or ".." in action.split("/"):
         raise ContribError("invalid button action path")
     method = str(n.get("method", "POST")).upper()
     if method not in ("GET", "POST", "PUT", "DELETE"):
@@ -326,7 +326,7 @@ def validate_keyed(data: Any) -> Dict[str, dict]:
     out: Dict[str, dict] = {}
     for k, v in data.items():
         k = str(k)
-        if not KEY_RE.match(k):
+        if not KEY_RE.fullmatch(k):
             raise ContribError("invalid key %r" % k[:40])
         out[k] = _node(v, b, 1)
     if len(json.dumps(out)) > MAX_BYTES:
@@ -470,7 +470,7 @@ def validate_config_schema(raw: Any) -> List[dict]:
         if not isinstance(f, dict):
             continue
         name = f.get("name")
-        if not isinstance(name, str) or not re.match(r"^[A-Za-z_][A-Za-z0-9_]{0,63}$", name):
+        if not isinstance(name, str) or not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]{0,63}", name):
             continue
         ftype = f.get("type", "text")
         if ftype not in FIELD_TYPES:
@@ -522,6 +522,8 @@ def coerce_config_values(schema: List[dict], values: Any, current: dict) -> tupl
                 continue
             try:
                 num = float(v)
+                if num != num or num in (float("inf"), float("-inf")):
+                    raise ValueError
             except (TypeError, ValueError):
                 return {}, "%s must be a number" % f["label"]
             if "min" in f and num < f["min"]:

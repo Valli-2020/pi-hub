@@ -96,7 +96,7 @@ def _clean_files(kind: str, files: Any, exts: Tuple[str, ...], limit: int) -> Li
         raise FrameError(f"frame {kind}: expected a list of at most {limit} paths")
     out: List[str] = []
     for f in files:
-        if not isinstance(f, str) or not _FILE_RE.match(f) or ".." in f.split("/") \
+        if not isinstance(f, str) or not _FILE_RE.fullmatch(f) or ".." in f.split("/") \
                 or any(p.startswith(".") or not p for p in f.split("/")):
             raise FrameError(f"frame {kind}: bad path {f!r}")
         if not f.lower().endswith(exts):
@@ -136,7 +136,7 @@ def load_frame(plugin: str, plugin_dir: str, fd: Any, granted: set,
     if "ui.frame" not in granted:
         raise FrameError("frame requires the ui.frame capability")
     fid = getattr(fd, "id", "")
-    if not isinstance(fid, str) or not _ID_RE.match(fid):
+    if not isinstance(fid, str) or not _ID_RE.fullmatch(fid):
         raise FrameError(f"frame id {fid!r} must match [a-z0-9-]{{1,32}}")
 
     entry = _clean_files("entry", getattr(fd, "entry", None), (".js",), 8)

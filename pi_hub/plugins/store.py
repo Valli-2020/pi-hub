@@ -99,10 +99,10 @@ def _classify(rel: str) -> Tuple[bool, str | None, str]:
         return False, None, ""
     if rel in _ALLOWED:
         return True, None, ""
-    if len(parts) == 1 and _IDENT_PY_RE.match(parts[0]):
+    if len(parts) == 1 and _IDENT_PY_RE.fullmatch(parts[0]):
         return True, None, ""
-    if len(parts) == 2 and _IDENT_RE.match(parts[0]) and parts[0] != "static" \
-            and _IDENT_PY_RE.match(parts[1]):
+    if len(parts) == 2 and _IDENT_RE.fullmatch(parts[0]) and parts[0] != "static" \
+            and _IDENT_PY_RE.fullmatch(parts[1]):
         return True, None, ""
     if rel.startswith(_ALLOWED_PREFIXES):
         if rel.startswith("static/frame/"):
@@ -118,7 +118,8 @@ _SOURCE_ID_RE = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
 # are path components, and os.path.join(PLUGINS_ROOT, "..") would escape
 # the plugins root into the repo root, letting uninstall/install rmtree
 # the whole hub.
-_PLUGIN_NAME_RE = re.compile(r"^(?!\.{1,64}$)[A-Za-z0-9._-]{1,64}$")
+# No ".json" names: they would collide with plugins.json / plugin_state.json.
+_PLUGIN_NAME_RE = re.compile(r"^(?!\.{1,64}$)(?!.*\.json$)[A-Za-z0-9._-]{1,64}$")
 
 _lock = threading.Lock()
 _cache: Dict[str, Any] = {"sources": []}   # loaded lazily; write-through
@@ -720,6 +721,13 @@ def _install_locked(source_id: str, name: str, version: str) -> Tuple[bool, str]
         return False, "cached entry has no asset_id"
 
     target_dir = _plugin_dir(name)
+    # Approvals belong to a plugin that is already installed here.  A fresh
+    # install, or one that replaces a same-named plugin from ANOTHER source,
+    # starts without inherited grants.
+    inherits = os.path.isdir(target_dir) and not any(
+        s.get("id") != source_id and any(p.get("name") == name and p.get("installed")
+                                         for p in s.get("plugins", []))
+        for s in _load_sources()["sources"])
     staging = os.path.join(PLUGINS_ROOT, f".staging-{name}")
     tmp_tarball = os.path.join(PLUGINS_ROOT, f".staging-{name}.tar.gz")
 
@@ -842,6 +850,12 @@ def _install_locked(source_id: str, name: str, version: str) -> Tuple[bool, str]
     entry["installed"] = True
     entry["enabled"] = False          # deny-by-default: install ≠ enable
     _save_sources()
+    if not inherits:
+        try:
+            from pi_hub.plugins import get_manager
+            get_manager().forget(name)
+        except Exception:
+            pass
     return True, f"plugin '{name}' v{version} installed"
 
 

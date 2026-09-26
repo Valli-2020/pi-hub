@@ -118,6 +118,8 @@ check("css: CR/FF/NUL cannot hide string boundaries",
       all(rejects(contrib.sanitize_css, 'a{b:"%s}} body{display:none} a{c:"}' % c) for c in ("\f", "\r", "\x00")))
 check("css: unterminated string rejected", rejects(contrib.sanitize_css, 'a{content:"x}'))
 check("css: a legit content string is fine", contrib.sanitize_css('a::before{content:"ok"}') == 'a::before{content:"ok"}')
+check("ids/keys/actions with a trailing newline are rejected",
+      not contrib.CONTRIB_ID_RE.fullmatch("abc\n") and not contrib.ACTION_RE.fullmatch("a/b\n") and not contrib.KEY_RE.fullmatch("k\n"))
 check("css size cap", rejects(contrib.sanitize_css, "a{b:c}" * 6000))
 check("non-string css", rejects(contrib.sanitize_css, {"a": 1}))
 st = contrib.validate_style({"css": ".a{b:c}"}, "my_plugin")

@@ -66,7 +66,7 @@ strict Content-Security-Policy.
 
 - **Plugin API v1 fixes:** `TaskDef` now runs (`interval`, `autostart`),
   `TabUIDef.position` sorts the sidebar, `ActionDef.style` and `.caps` take
-  effect, `ctx.toast()` reaches the UI, `on_host_state_change` and
+  effect, `ctx.toast()` reaches the UI (admins only), `on_host_state_change` and
   `on_scan_complete` are called, `load()` is optional, plugins that fail to
   load are listed with their error, and an unknown `plugin_api_version` is
   refused. Plugin tabs are no longer rewritten on every poll.

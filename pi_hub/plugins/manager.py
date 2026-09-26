@@ -87,7 +87,10 @@ def push_toast(plugin_name: str, message: str, kind: str = "info") -> None:
             _toasts.pop(0)
 
 
-def toasts_since(seq: int) -> List[Dict[str, Any]]:
+def toasts_since(seq: int, admin: bool = True) -> List[Dict[str, Any]]:
+    """Plugin toasts are operational messages: only admins receive them."""
+    if not admin:
+        return []
     with _toast_lock:
         return [dict(t) for t in _toasts if t["seq"] > seq]
 
@@ -347,7 +350,7 @@ class PluginManager:
         """Plugin names must be safe URL path segments — and must never
         be ``.`` / ``..`` / all-dots, which would escape the plugins root
         into the repo root."""
-        return bool(re.match(r"^(?!\.{1,64}$)[A-Za-z0-9._-]{1,64}$", name))
+        return bool(re.fullmatch(r"(?!\.{1,64}$)(?!.*\.json$)[A-Za-z0-9._-]{1,64}", name))
 
     # ── Persistent state (grants, appearance) ─────────────────────────────
 
@@ -1163,7 +1166,7 @@ class PluginManager:
             for fut in pending:
                 lc = futures[fut]
                 result[lc.cid] = self._provider_failed(lc, "provider timed out")
-        return {"rev": self._rev, "data": result, "toasts": toasts_since(since),
+        return {"rev": self._rev, "data": result, "toasts": toasts_since(since, (session or {}).get("role") == "admin"),
                 "toast_seq": toast_seq()}
 
     @staticmethod

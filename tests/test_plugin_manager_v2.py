@@ -470,6 +470,17 @@ check("contribution without ui.* grant is denied, not served",
 m.unload_all()
 
 shutil.rmtree(ROOT, ignore_errors=True)
+print("review follow-ups")
+from pi_hub.plugins import manager as _mgr, store as _store  # noqa: E402
+_mgr.push_toast("p", "hello")
+check("plugin toasts reach admins only",
+      len(_mgr.toasts_since(0, True)) >= 1 and _mgr.toasts_since(0, False) == [])
+check("plugin names that end in .json are refused",
+      not _store._PLUGIN_NAME_RE.fullmatch("plugin_state.json") and not _store._PLUGIN_NAME_RE.fullmatch("plugins.json")
+      and bool(_store._PLUGIN_NAME_RE.fullmatch("my-plugin")))
+check("Manager._validate_name agrees", not _mgr.PluginManager._validate_name(None, "plugins.json")
+      and _mgr.PluginManager._validate_name(None, "ok-name") and not _mgr.PluginManager._validate_name(None, "ok\n"))
+
 print()
 if FAILED:
     print("FAILED:", ", ".join(FAILED))
