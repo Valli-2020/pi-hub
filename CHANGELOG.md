@@ -37,8 +37,9 @@ strict Content-Security-Policy.
   the read APIs it declared, nothing else); the iframe URL carries a
   one-time 30 s ticket. Frame files are pinned by SHA-256.
 - **Consent before code runs.** Enabling a plugin shows what it declares
-  (system and `ui.*` capabilities, high-risk ones flagged) and nothing is
-  imported until the admin approves. Grants live in
+  (system and `ui.*` capabilities, high-risk ones flagged) and the plugin is
+  not imported until the admin approves (a plugin that hides its
+  capabilities from the static read is refused after import instead). Grants live in
   `pi_hub_plugins/plugin_state.json`; an update that asks for more waits for
   re-approval. Plugins that were enabled before the upgrade are
   grandfathered.
