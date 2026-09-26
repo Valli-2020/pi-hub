@@ -24,7 +24,8 @@
 <style>
   /* ── Tokens ────────────────────────────────────────────────────────────
      One warm amber accent. Status colours (ok/warn/bad) are the only other
-     hues and they are never used decoratively — colour always means state. */
+     hues and they are never used decoratively — colour always means state.
+     Theme plugins override these names; everything below derives from them. */
   :root {
     --bg:            oklch(18% 0.012 265);
     --surface:       oklch(23% 0.014 265);
@@ -43,17 +44,29 @@
     --ok-ink:        oklch(17% 0.03 152);
     --bad-ink:       oklch(98% 0.01 25);
     --shadow:        0 1px 2px rgb(0 0 0 / .25), 0 8px 24px rgb(0 0 0 / .18);
+    --shadow-lg:     0 2px 6px rgb(0 0 0 / .3), 0 24px 60px rgb(0 0 0 / .4);
+    --hl:            inset 0 1px 0 rgb(255 255 255 / .035);
     --radius:        14px;
     --radius-sm:     9px;
+    --r-xs:          6px;
+    --r-md:          11px;
+    --ease:          cubic-bezier(.2, .7, .2, 1);
+    --dur:           .16s;
+    --field:         color-mix(in oklab, var(--bg) 55%, var(--surface));
+    --ring:          0 0 0 3px color-mix(in oklab, var(--accent) 22%, transparent);
     --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
     --mono: ui-monospace, "SF Mono", "JetBrains Mono", "Cascadia Code", Menlo, Consolas, monospace;
+    /* v7 names that were used but never defined — kept as aliases so old
+       markup and plugins that reference them get a real surface. */
+    --card:          var(--surface);
+    --raised:        var(--field);
   }
   :root[data-theme="light"] {
     --bg:            oklch(97% 0.004 265);
     --surface:       oklch(100% 0 0);
     --surface-2:     oklch(96% 0.006 265);
-    --border:        oklch(89% 0.008 265);
-    --border-strong: oklch(78% 0.012 265);
+    --border:        oklch(90% 0.008 265);
+    --border-strong: oklch(80% 0.012 265);
     --text:          oklch(25% 0.02 265);
     --muted:         oklch(50% 0.015 265);
     --faint:         oklch(62% 0.015 265);
@@ -66,156 +79,216 @@
     --ok-ink:        oklch(100% 0 0);
     --bad-ink:       oklch(100% 0 0);
     --shadow:        0 1px 2px rgb(0 0 0 / .05), 0 6px 20px rgb(0 0 0 / .06);
+    --shadow-lg:     0 2px 6px rgb(0 0 0 / .06), 0 24px 60px rgb(0 0 0 / .14);
+    --hl:            0 1px 2px rgb(0 0 0 / .03);
+    --field:         oklch(99% 0.002 265);
   }
 
   * { box-sizing: border-box; }
-  html { scroll-behavior: smooth; }
+  html { scroll-behavior: smooth; scrollbar-color: var(--border-strong) transparent; }
   body { margin:0; background:var(--bg); color:var(--text); font-family:var(--sans);
          font-size:15px; line-height:1.5; -webkit-font-smoothing:antialiased; }
+  ::selection { background:color-mix(in oklab, var(--accent) 32%, transparent); }
   :focus-visible { outline:2px solid var(--accent); outline-offset:2px; border-radius:4px; }
+  code { font-family:var(--mono); font-size:.9em; padding:1px 5px; border-radius:var(--r-xs);
+         background:var(--surface-2); border:1px solid var(--border); }
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { animation-duration:.01ms !important; transition-duration:.01ms !important; }
     html { scroll-behavior:auto; }
+    .toast .tbar { animation-duration:4s !important; }   /* it is the dismiss timer, not decoration */
   }
 
   /* ── Header ─────────────────────────────────────────────────────────── */
   header { position:sticky; top:0; z-index:30; display:flex; align-items:center; gap:16px;
-           height:56px; padding:0 16px; background:color-mix(in oklab, var(--bg) 88%, transparent);
-           backdrop-filter:blur(10px); border-bottom:1px solid var(--border); }
+           height:58px; padding:0 18px; background:color-mix(in oklab, var(--bg) 82%, transparent);
+           backdrop-filter:blur(14px) saturate(1.4); border-bottom:1px solid var(--border); }
   .brand { display:flex; align-items:center; gap:10px; flex:none; }
   .brand svg { width:26px; height:26px; color:var(--accent); display:block; }
-  h1 { margin:0; font-size:16px; font-weight:650; letter-spacing:-.01em; white-space:nowrap; }
+  h1 { margin:0; font-size:16px; font-weight:650; letter-spacing:-.015em; white-space:nowrap; }
 
   /* Health strip — the "glanceable" bit: totals before you read anything */
   .health { display:flex; align-items:center; gap:6px; flex:none; }
-  .health .hpill { display:inline-flex; align-items:center; gap:6px; height:26px; padding:0 9px;
+  .health .hpill { display:inline-flex; align-items:center; gap:6px; height:26px; padding:0 10px 0 9px;
                    border-radius:99px; font-size:12px; font-variant-numeric:tabular-nums;
                    border:1px solid var(--border); color:var(--muted); background:var(--surface); }
+  .health .hpill::before { content:""; width:6px; height:6px; border-radius:50%; background:var(--ok);
+                           box-shadow:0 0 0 3px color-mix(in oklab, var(--ok) 18%, transparent); }
   .health .hpill b { font-weight:600; color:var(--text); }
-  .health .hpill.bad  { border-color:color-mix(in oklab, var(--bad) 45%, var(--border)); color:var(--bad); }
+  .health .hpill.bad  { border-color:color-mix(in oklab, var(--bad) 45%, var(--border)); color:var(--bad);
+                        background:color-mix(in oklab, var(--bad) 8%, var(--surface)); }
+  .health .hpill.bad::before { background:var(--bad); box-shadow:0 0 0 3px color-mix(in oklab, var(--bad) 20%, transparent); }
   .health .hpill.bad b { color:var(--bad); }
 
-  .search { position:relative; flex:1; max-width:380px; margin-left:auto; }
-  .search svg { position:absolute; left:10px; top:50%; transform:translateY(-50%);
+  .search { position:relative; flex:1; max-width:400px; margin-left:auto; }
+  .search svg { position:absolute; left:11px; top:50%; transform:translateY(-50%);
                 width:15px; height:15px; color:var(--faint); pointer-events:none; }
-  .search input { width:100%; height:34px; padding:0 34px 0 32px; font:inherit; font-size:13.5px;
+  .search input { width:100%; height:36px; padding:0 36px 0 34px; font:inherit; font-size:13.5px;
                   color:var(--text); background:var(--surface); border:1px solid var(--border);
-                  border-radius:99px; transition:border-color .15s, background .15s; }
+                  border-radius:99px; transition:border-color var(--dur), background var(--dur), box-shadow var(--dur); }
   .search input::placeholder { color:var(--faint); }
   .search input:hover { border-color:var(--border-strong); }
-  .search input:focus { outline:none; border-color:var(--accent); background:var(--bg); }
-  .search kbd { position:absolute; right:9px; top:50%; transform:translateY(-50%); font-family:var(--mono);
-                font-size:11px; color:var(--faint); border:1px solid var(--border); border-radius:5px;
-                padding:1px 5px; pointer-events:none; }
+  .search input:focus { outline:none; border-color:var(--accent); background:var(--bg); box-shadow:var(--ring); }
+  .search kbd { position:absolute; right:10px; top:50%; transform:translateY(-50%); font-family:var(--mono);
+                font-size:11px; color:var(--faint); border:1px solid var(--border); border-bottom-width:2px;
+                border-radius:5px; padding:0 5px; pointer-events:none; background:var(--surface-2); }
   .search input:not(:placeholder-shown) ~ kbd { display:none; }
 
   .hactions { display:flex; align-items:center; gap:6px; flex:none; }
+  .hsep { width:1px; height:22px; background:var(--border); margin:0 4px; }
   .iconbtn { width:34px; height:34px; display:grid; place-items:center; border-radius:var(--radius-sm);
-             background:transparent; border:1px solid var(--border); color:var(--muted); cursor:pointer;
-             transition:color .15s, border-color .15s, background .15s; }
-  .iconbtn:hover { color:var(--text); border-color:var(--border-strong); background:var(--surface); }
-  .iconbtn svg { width:16px; height:16px; display:block; }
+             background:transparent; border:1px solid transparent; color:var(--muted); cursor:pointer;
+             transition:color var(--dur), border-color var(--dur), background var(--dur); }
+  .iconbtn:hover { color:var(--text); border-color:var(--border); background:var(--surface); }
+  .iconbtn svg { width:17px; height:17px; display:block; }
   .iconbtn.spin svg { animation:spin .8s linear infinite; }
   @keyframes spin { to { transform:rotate(360deg); } }
-  .stamp { font-size:11.5px; color:var(--faint); font-variant-numeric:tabular-nums; white-space:nowrap; }
+  /* Live indicator: the dot says whether the numbers on screen are fresh. */
+  .stamp { display:inline-flex; align-items:center; gap:6px; font-size:11.5px; color:var(--faint);
+           font-variant-numeric:tabular-nums; white-space:nowrap; min-width:64px; justify-content:flex-end; }
+  .stamp:not(:empty)::before { content:""; width:7px; height:7px; border-radius:50%; background:var(--ok);
+                               animation:live 2.4s ease-in-out infinite; }
+  .stamp[data-stale="warn"] { color:var(--warn); }
+  .stamp[data-stale="warn"]::before { background:var(--warn); }
+  .stamp[data-stale="bad"] { color:var(--bad); }
+  .stamp[data-stale="bad"]::before { background:var(--bad); animation:pulse 1s ease-in-out infinite; }
+  @keyframes live { 0%,100% { box-shadow:0 0 0 0 color-mix(in oklab, var(--ok) 55%, transparent); }
+                    60%     { box-shadow:0 0 0 5px transparent; } }
 
   /* ── Sidebar ────────────────────────────────────────────────────────── */
-  .shell { display:grid; grid-template-columns:212px minmax(0,1fr); align-items:start; }
-  .sidebar { position:sticky; top:56px; height:calc(100dvh - 56px); padding:14px 10px;
+  .shell { display:grid; grid-template-columns:220px minmax(0,1fr); align-items:start; }
+  .sidebar { position:sticky; top:58px; height:calc(100dvh - 58px); padding:14px 10px;
              display:flex; flex-direction:column; gap:2px; border-right:1px solid var(--border);
-             overflow-y:auto; }
-  .nav-item { display:flex; align-items:center; gap:10px; width:100%; padding:8px 10px;
+             overflow-y:auto; scrollbar-width:thin; }
+  .nav-item { position:relative; display:flex; align-items:center; gap:10px; width:100%; padding:8px 10px;
               font:inherit; font-size:13.5px; color:var(--muted); background:transparent; border:0;
               border-radius:var(--radius-sm); cursor:pointer; text-align:left;
-              transition:background .12s, color .12s; }
-  .nav-item svg { width:16px; height:16px; flex:none; opacity:.85; }
-  .nav-item .count { margin-left:auto; font-size:11.5px; font-variant-numeric:tabular-nums;
-                     color:var(--faint); background:var(--surface-2); border-radius:99px; padding:1px 7px; }
-  .nav-item:hover { background:var(--surface); color:var(--text); }
-  .nav-item[aria-current="page"] { background:var(--surface); color:var(--text); font-weight:550; }
+              transition:background var(--dur), color var(--dur); }
+  .nav-item svg { width:16px; height:16px; flex:none; opacity:.8; transition:color var(--dur), opacity var(--dur); }
+  .nav-item .count { margin-left:auto; font-size:11px; font-weight:550; font-variant-numeric:tabular-nums;
+                     color:var(--faint); background:var(--surface-2); border-radius:99px; padding:1px 7px;
+                     min-width:22px; text-align:center; transition:inherit; }
+  .nav-item .count:empty { display:none; }
+  .nav-item:hover { background:color-mix(in oklab, var(--surface) 70%, transparent); color:var(--text); }
+  .nav-item:hover svg { opacity:1; }
+  .nav-item[aria-current="page"] { background:var(--surface); color:var(--text); font-weight:580;
+                                   box-shadow:var(--hl), 0 0 0 1px var(--border); }
+  .nav-item[aria-current="page"]::before { content:""; position:absolute; left:-10px; top:8px; bottom:8px;
+                                           width:3px; border-radius:0 3px 3px 0; background:var(--accent); }
   .nav-item[aria-current="page"] svg { color:var(--accent); opacity:1; }
-  .navhint { margin-top:auto; padding:10px; font-size:11.5px; color:var(--faint); line-height:1.6; }
-  .navhint kbd { font-family:var(--mono); font-size:10.5px; border:1px solid var(--border);
-                 border-radius:4px; padding:0 4px; }
+  .nav-item[aria-current="page"] .count { color:var(--accent);
+                                          background:color-mix(in oklab, var(--accent) 14%, transparent); }
+  /* Divider between the built-in sections and the first plugin tab. */
+  .nav-item:not([data-ph-tab],[data-phf-tab],[data-plg-tab]) + .nav-item:is([data-ph-tab],[data-phf-tab],[data-plg-tab]) { margin-top:17px; }
+  .nav-item:not([data-ph-tab],[data-phf-tab],[data-plg-tab]) + .nav-item:is([data-ph-tab],[data-phf-tab],[data-plg-tab])::after {
+    content:""; position:absolute; left:10px; right:10px; top:-9px; height:1px; background:var(--border); }
+  .navhint { margin-top:auto; padding:10px; font-size:11.5px; color:var(--faint); line-height:1.9; }
+  .navhint kbd { font-family:var(--mono); font-size:10.5px; border:1px solid var(--border); border-bottom-width:2px;
+                 border-radius:4px; padding:0 4px; background:var(--surface); }
 
-  main { padding:22px 24px 64px; min-width:0; }
-  .viewhead { display:flex; align-items:baseline; gap:10px; margin:0 0 14px; }
-  .viewhead h2 { margin:0; font-size:19px; font-weight:600; letter-spacing:-.015em; }
-  .viewhead .sub { font-size:13px; color:var(--faint); font-variant-numeric:tabular-nums; }
-  h3.group { font-size:11.5px; font-weight:600; color:var(--faint); margin:22px 0 10px;
-             text-transform:uppercase; letter-spacing:.07em; }
+  main { padding:26px 28px 72px; min-width:0; }
+  .view:not([hidden]) { animation:view-in .24s var(--ease); }
+  @keyframes view-in { from { opacity:0; transform:translateY(4px); } }
+  .viewhead { display:flex; align-items:center; flex-wrap:wrap; gap:10px; margin:0 0 18px; }
+  .viewhead h2 { margin:0; font-size:21px; font-weight:650; letter-spacing:-.02em; }
+  .viewhead .sub { font-size:12px; color:var(--muted); font-variant-numeric:tabular-nums;
+                   padding:2px 9px; border-radius:99px; background:var(--surface); border:1px solid var(--border); }
+  .viewhead .sub:empty { display:none; }
+  .viewhead .btn { margin-left:auto; }
+  h3.group { font-size:11px; font-weight:650; color:var(--faint); margin:24px 0 10px;
+             text-transform:uppercase; letter-spacing:.08em; }
   h3.group:first-child { margin-top:0; }
   /* Group heading inside the services grid — spans the full row. */
   h3.svc-group { grid-column:1 / -1; margin:18px 0 2px; }
   h3.svc-group:first-child { margin-top:0; }
+  .hint { font-size:12.5px; line-height:1.55; color:var(--muted); margin:12px 0 0; }
 
-  .grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(258px,1fr)); gap:12px; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(264px,1fr)); gap:14px; }
 
   /* ── Card ───────────────────────────────────────────────────────────── */
   .card { position:relative; display:flex; flex-direction:column; gap:12px; overflow:hidden;
-          padding:14px 16px 14px 17px; background:var(--surface);
-          border:1px solid var(--border); border-radius:var(--radius);
-          transition:border-color .15s, box-shadow .15s, transform .15s; }
-  .card:hover { border-color:var(--border-strong); box-shadow:var(--shadow); }
+          padding:15px 16px 14px 18px; background:var(--surface);
+          border:1px solid var(--border); border-radius:var(--radius); box-shadow:var(--hl);
+          transition:border-color var(--dur), box-shadow .2s, transform .2s var(--ease); }
+  .card:hover { border-color:var(--border-strong); box-shadow:var(--hl), var(--shadow); transform:translateY(-1px); }
   /* status rail — colour on the edge, so state is readable without hunting for a dot */
-  .card::before { content:""; position:absolute; left:0; top:0; bottom:0; width:3px;
-                  background:var(--faint); transition:background .3s; }
+  .card::before { content:""; position:absolute; left:0; top:14px; bottom:14px; width:3px;
+                  border-radius:0 3px 3px 0; background:var(--faint); transition:background .3s; }
   .card[data-state="online"]::before  { background:var(--ok); }
   .card[data-state="running"]::before { background:var(--ok); }
   .card[data-state="offline"]::before { background:var(--bad); }
   .card[data-state="stopped"]::before { background:var(--bad); }
   .card[data-state="degraded"]::before,
   .card[data-state="pending"]::before { background:var(--warn); }
+  .card[data-state="offline"] .icon, .card[data-state="stopped"] .icon { filter:grayscale(.7); opacity:.75; }
 
-  .card .top { display:flex; align-items:center; gap:10px; }
-  .card h4 { margin:0; font-size:14.5px; font-weight:600; letter-spacing:-.01em;
+  .card .top { display:flex; align-items:center; gap:11px; min-width:0; }
+  .card h4 { margin:0; font-size:14.5px; font-weight:620; letter-spacing:-.01em; min-width:0;
              overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  .icon { width:32px; height:32px; flex:none; border-radius:9px; display:grid; place-items:center;
-          background:var(--surface-2); border:1px solid var(--border); color:var(--accent); }
+  .card h4 a { color:inherit; text-decoration:none; }
+  .card h4 a:hover { color:var(--accent); }
+  .icon { width:34px; height:34px; flex:none; border-radius:10px; display:grid; place-items:center;
+          background:linear-gradient(160deg, var(--surface-2), color-mix(in oklab, var(--surface-2) 60%, var(--bg)));
+          border:1px solid var(--border); color:var(--accent); box-shadow:var(--hl); }
   .icon svg { width:18px; height:18px; display:block; }
-  .meta { font-size:12px; color:var(--muted); font-family:var(--mono); word-break:break-all;
-          margin-top:-4px; }
+  .meta { font-size:12px; color:var(--muted); font-family:var(--mono); overflow-wrap:anywhere;
+          margin-top:-5px; }
 
   /* status chip: dot + word. Colour alone never carries the meaning. */
-  .chip { margin-left:auto; flex:none; display:inline-flex; align-items:center; gap:5px;
-          height:22px; padding:0 8px; border-radius:99px; font-size:11px; font-weight:550;
+  .chip { margin-left:auto; flex:none; display:inline-flex; align-items:center; gap:6px;
+          height:22px; padding:0 9px 0 8px; border-radius:99px; font-size:11px; font-weight:580;
           letter-spacing:.02em; border:1px solid var(--border); color:var(--muted);
           background:var(--surface-2); }
   .chip .dot { width:6px; height:6px; border-radius:50%; background:currentColor; flex:none; }
   .chip[data-state="online"], .chip[data-state="running"]
-        { color:var(--ok);   border-color:color-mix(in oklab, var(--ok) 40%, transparent);
-          background:color-mix(in oklab, var(--ok) 12%, transparent); }
+        { color:var(--ok);   border-color:color-mix(in oklab, var(--ok) 35%, transparent);
+          background:color-mix(in oklab, var(--ok) 11%, transparent); }
   .chip[data-state="offline"], .chip[data-state="stopped"]
-        { color:var(--bad);  border-color:color-mix(in oklab, var(--bad) 40%, transparent);
-          background:color-mix(in oklab, var(--bad) 12%, transparent); }
+        { color:var(--bad);  border-color:color-mix(in oklab, var(--bad) 35%, transparent);
+          background:color-mix(in oklab, var(--bad) 11%, transparent); }
   .chip[data-state="degraded"], .chip[data-state="pending"]
-        { color:var(--warn); border-color:color-mix(in oklab, var(--warn) 40%, transparent);
-          background:color-mix(in oklab, var(--warn) 12%, transparent); }
+        { color:var(--warn); border-color:color-mix(in oklab, var(--warn) 35%, transparent);
+          background:color-mix(in oklab, var(--warn) 11%, transparent); }
+  .chip[data-state="online"] .dot, .chip[data-state="running"] .dot
+        { box-shadow:0 0 0 2.5px color-mix(in oklab, var(--ok) 25%, transparent); }
   .chip[data-state="pending"] .dot { animation:pulse 1.4s ease-in-out infinite; }
   @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:.25; } }
 
   /* ── Buttons ────────────────────────────────────────────────────────── */
   .btn { display:inline-flex; align-items:center; justify-content:center; gap:6px;
-         height:32px; padding:0 12px; font:inherit; font-size:13px; font-weight:550;
+         height:32px; padding:0 13px; font:inherit; font-size:13px; font-weight:560;
          border-radius:var(--radius-sm); border:1px solid transparent; cursor:pointer;
          text-decoration:none; white-space:nowrap;
-         transition:background .15s, border-color .15s, color .15s, transform .06s; }
+         transition:background var(--dur), border-color var(--dur), color var(--dur), box-shadow var(--dur), transform .06s; }
   .btn:active:not(:disabled) { transform:translateY(1px); }
   .btn svg { width:14px; height:14px; flex:none; }
   .btn:disabled, .btn[aria-disabled="true"] { opacity:.42; cursor:not-allowed; pointer-events:none; }
-  .btn-primary { background:var(--accent); color:var(--accent-ink); }
+  .btn-primary { background:var(--accent); color:var(--accent-ink);
+                 box-shadow:inset 0 1px 0 rgb(255 255 255 / .18), 0 1px 2px rgb(0 0 0 / .2); }
   .btn-primary:hover:not(:disabled) { background:var(--accent-hover); }
   .btn-quiet { background:var(--surface-2); color:var(--text); border-color:var(--border); }
-  .btn-quiet:hover:not(:disabled) { border-color:var(--border-strong); background:var(--surface); }
+  .btn-quiet:hover:not(:disabled) { border-color:var(--border-strong); background:color-mix(in oklab, var(--surface-2) 60%, var(--border)); }
   .btn-ok { background:transparent; color:var(--ok);
-            border-color:color-mix(in oklab, var(--ok) 45%, transparent); }
-  .btn-ok:hover:not(:disabled) { background:color-mix(in oklab, var(--ok) 14%, transparent); }
+            border-color:color-mix(in oklab, var(--ok) 40%, transparent); }
+  .btn-ok:hover:not(:disabled) { background:color-mix(in oklab, var(--ok) 13%, transparent); }
   .btn-bad { background:transparent; color:var(--bad);
-             border-color:color-mix(in oklab, var(--bad) 45%, transparent); }
-  .btn-bad:hover:not(:disabled) { background:color-mix(in oklab, var(--bad) 14%, transparent); }
-  .btn-row { display:flex; gap:7px; flex-wrap:wrap; margin-top:auto; }
+             border-color:color-mix(in oklab, var(--bad) 40%, transparent); }
+  .btn-bad:hover:not(:disabled) { background:color-mix(in oklab, var(--bad) 13%, transparent); }
+  .btn-row { display:flex; gap:7px; flex-wrap:wrap; align-items:center; margin-top:auto; }
   .btn-block { width:100%; }
-  .btn-sm { height:27px; padding:0 10px; font-size:12px; }
+  .btn-sm { height:28px; padding:0 10px; font-size:12px; }
+  /* Ghost icon buttons (edit / delete on cards): present, but not shouting. */
+  .btn-icon { width:28px; padding:0; background:transparent; color:var(--faint); border-color:transparent; }
+  .btn-icon svg { width:15px; height:15px; }
+  .btn-icon:hover:not(:disabled) { color:var(--text); background:var(--surface-2); border-color:var(--border); }
+  .btn-icon.danger:hover:not(:disabled) { color:var(--bad); border-color:color-mix(in oklab, var(--bad) 40%, transparent);
+                                          background:color-mix(in oklab, var(--bad) 10%, transparent); }
+  .btn-row .btn-admin { order:10; margin-left:auto; display:inline-flex; gap:2px; }
+  /* "Open" on service cards: one calm button instead of a wall of accent. */
+  .btn-open { flex:1; background:var(--surface-2); color:var(--text); border-color:var(--border); }
+  .btn-open svg { color:var(--accent); }
+  .btn-open:hover { background:color-mix(in oklab, var(--accent) 14%, var(--surface-2));
+                    border-color:color-mix(in oklab, var(--accent) 45%, var(--border)); }
+  .contents { display:contents; }
 
   /* ── Task progress ──────────────────────────────────────────────────── */
   .task { display:none; align-items:center; gap:8px; padding:8px 10px; font-size:12px;
@@ -229,210 +302,354 @@
 
   /* ── Stacks list ────────────────────────────────────────────────────── */
   .rows { display:flex; flex-direction:column; border:1px solid var(--border);
-          border-radius:var(--radius); overflow:hidden; background:var(--surface); }
-  .row { display:flex; align-items:center; gap:12px; padding:11px 14px;
-         border-bottom:1px solid var(--border); }
+          border-radius:var(--radius); overflow:hidden; background:var(--surface); box-shadow:var(--hl); }
+  .row { display:flex; align-items:center; gap:12px; padding:10px 14px;
+         border-bottom:1px solid var(--border); transition:background var(--dur); }
   .row:last-child { border-bottom:none; }
-  .row:hover { background:var(--surface-2); }
-  .row .name { font-size:14px; font-weight:500; }
+  .row:hover { background:color-mix(in oklab, var(--surface-2) 70%, transparent); }
+  .row .icon { width:28px; height:28px; border-radius:8px; }
+  .row .icon svg { width:15px; height:15px; }
+  .row .name { font-size:14px; font-weight:540; }
   .row .chip { margin-left:auto; }
+  .row[data-state="stopped"] .name, .row[data-state="exited"] .name { color:var(--muted); }
 
   /* ── Table ──────────────────────────────────────────────────────────── */
   .tablewrap { border:1px solid var(--border); border-radius:var(--radius); overflow:hidden;
-               background:var(--surface); }
+               background:var(--surface); box-shadow:var(--hl); }
   .tscroll { overflow-x:auto; }
-  table { width:100%; border-collapse:collapse; font-size:13.5px; table-layout:fixed; }
-  th:nth-child(1), td:nth-child(1) { width:60px; }   /* VMID */
-  th:nth-child(4), td:nth-child(4) { width:90px; }   /* CPU */
-  th:nth-child(5), td:nth-child(5) { width:110px; }  /* Memory */
-  th:nth-child(6), td:nth-child(6) { width:80px; }   /* Actions */
-  th { background:var(--surface-2); color:var(--muted);
-       text-align:left; padding:9px 14px; font-weight:600; font-size:11.5px;
-       text-transform:uppercase; letter-spacing:.06em; border-bottom:1px solid var(--border);
+  table { width:100%; border-collapse:collapse; font-size:13.5px; }
+  /* Fixed column widths only for the containers table (they used to apply to
+     every table and were off by one after the Host column was added). */
+  [data-view="containers"] table { table-layout:fixed; min-width:760px; }
+  [data-view="containers"] th:nth-child(1) { width:110px; }  /* Host */
+  [data-view="containers"] th:nth-child(2) { width:74px; }   /* VMID */
+  [data-view="containers"] th:nth-child(4) { width:112px; }  /* Status */
+  [data-view="containers"] th:nth-child(5) { width:150px; }  /* CPU */
+  [data-view="containers"] th:nth-child(6) { width:160px; }  /* Memory */
+  [data-view="containers"] th:last-child   { width:104px; }  /* Actions */
+  [data-view="containers"] th:nth-child(n+7):not(:last-child) { width:150px; }  /* plugin columns */
+  th { background:var(--surface-2); color:var(--faint);
+       text-align:left; padding:10px 14px; font-weight:650; font-size:11px;
+       text-transform:uppercase; letter-spacing:.07em; border-bottom:1px solid var(--border);
        white-space:nowrap; }
-  th[data-sort] { cursor:pointer; user-select:none; }
+  th[data-sort] { cursor:pointer; user-select:none; transition:color var(--dur); }
   th[data-sort]:hover { color:var(--text); }
+  th[aria-sort] { color:var(--text); }
   th[data-sort]::after { content:""; display:inline-block; width:0; height:0; margin-left:6px;
                          vertical-align:middle; opacity:0;
                          border-left:4px solid transparent; border-right:4px solid transparent; }
-  th[aria-sort="ascending"]::after  { opacity:.8; border-bottom:5px solid currentColor; }
-  th[aria-sort="descending"]::after { opacity:.8; border-top:5px solid currentColor; }
+  th[aria-sort="ascending"]::after  { opacity:.8; border-bottom:5px solid var(--accent); }
+  th[aria-sort="descending"]::after { opacity:.8; border-top:5px solid var(--accent); }
   td { padding:10px 14px; border-bottom:1px solid var(--border); vertical-align:middle; }
   tbody tr:last-child td { border-bottom:none; }
-  tbody tr:hover { background:var(--surface-2); }
-  td.num { font-family:var(--mono); font-variant-numeric:tabular-nums; }
-  td.actions { text-align:right; }
-  td.actions .btn-row { margin:0; justify-content:flex-end; }
+  tbody tr { transition:background var(--dur); }
+  tbody tr:hover { background:color-mix(in oklab, var(--surface-2) 70%, transparent); }
+  td.num { font-family:var(--mono); font-variant-numeric:tabular-nums; color:var(--muted); }
+  td.actions { text-align:right; white-space:nowrap; }
+  td.actions .btn-row { margin:0; justify-content:flex-end; flex-wrap:nowrap; }
+  .ct-name { display:block; font-weight:560; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  /* one line of tags, faded at the edge — the tag filter above lists them all */
+  .ct-tags { display:flex; flex-wrap:nowrap; gap:3px; margin-top:4px; overflow:hidden;
+             -webkit-mask-image:linear-gradient(90deg, #000 calc(100% - 28px), transparent);
+                     mask-image:linear-gradient(90deg, #000 calc(100% - 28px), transparent); }
+  .ct-tags .tagpill { flex:none; }
+  .ct-tags .tagpill { margin:0; }
+  .rolepill { display:inline-flex; align-items:center; height:20px; padding:0 8px; border-radius:99px;
+              font-size:11px; font-weight:580; border:1px solid var(--border); color:var(--muted); background:var(--surface-2); }
+  .rolepill[data-role="admin"] { color:var(--accent); border-color:color-mix(in oklab, var(--accent) 40%, transparent);
+                                 background:color-mix(in oklab, var(--accent) 10%, transparent); }
+  .ucell { display:flex; align-items:center; gap:10px; font-weight:560; }
 
   /* usage bar — number first, bar as secondary reinforcement */
-  .usage { display:flex; align-items:center; gap:8px; min-width:104px; }
+  .usage { display:flex; align-items:center; gap:10px; min-width:104px; }
   .usage .val { font-family:var(--mono); font-variant-numeric:tabular-nums; font-size:12.5px;
-                min-width:46px; }
-  .bar { flex:1; height:4px; border-radius:2px; background:var(--surface-2); overflow:hidden; }
-  .bar i { display:block; height:100%; border-radius:2px; background:var(--accent);
-           transition:width .4s ease; }
+                min-width:50px; }
+  .bar { flex:1; height:5px; border-radius:99px; background:var(--surface-2); overflow:hidden;
+         box-shadow:inset 0 0 0 1px color-mix(in oklab, var(--border) 60%, transparent); }
+  .bar i { display:block; height:100%; min-width:2px; border-radius:99px; background:var(--ok);
+           transition:width .4s var(--ease), background .3s; }
+  .bar i[data-warm] { background:var(--warn); }
   .bar i[data-hot] { background:var(--bad); }
 
   /* ── States ─────────────────────────────────────────────────────────── */
-  .skel { border-radius:var(--radius); background:var(--surface); border:1px solid var(--border);
-          height:132px; position:relative; overflow:hidden; }
+  .skel { border-radius:var(--radius); border:1px solid var(--border);
+          height:140px; position:relative; overflow:hidden;
+          background:
+            linear-gradient(var(--surface-2), var(--surface-2)) 16px 16px / 34px 34px no-repeat,
+            linear-gradient(var(--surface-2), var(--surface-2)) 62px 26px / 42% 12px no-repeat,
+            linear-gradient(var(--surface-2), var(--surface-2)) 16px 66px / 62% 10px no-repeat,
+            linear-gradient(var(--surface-2), var(--surface-2)) 16px calc(100% - 16px) / 34% 28px no-repeat,
+            var(--surface); }
   .skel::after { content:""; position:absolute; inset:0;
-                 background:linear-gradient(90deg, transparent, color-mix(in oklab, var(--text) 6%, transparent), transparent);
+                 background:linear-gradient(90deg, transparent, color-mix(in oklab, var(--text) 5%, transparent), transparent);
                  transform:translateX(-100%); animation:sweep 1.4s ease-in-out infinite; }
   @keyframes sweep { to { transform:translateX(100%); } }
-  .empty { padding:34px 20px; text-align:center; color:var(--muted); }
-  .empty strong { display:block; color:var(--text); font-weight:550; margin-bottom:4px; font-size:14.5px; }
+  .empty { padding:38px 20px; text-align:center; color:var(--muted); }
+  .empty strong { display:block; color:var(--text); font-weight:580; margin-bottom:4px; font-size:14.5px; }
   .empty p { margin:0 0 14px; font-size:13.5px; }
   .nomatch { display:none; padding:28px 4px; color:var(--muted); font-size:13.5px; }
 
   /* ── Toasts ─────────────────────────────────────────────────────────── */
   #toasts { position:fixed; bottom:18px; right:18px; z-index:9999;
-            display:flex; flex-direction:column; gap:8px; max-width:340px; }
-  .toast { display:flex; align-items:flex-start; gap:9px; padding:10px 13px; font-size:13px;
-           background:var(--surface); border:1px solid var(--border); border-left:3px solid var(--faint);
-           border-radius:var(--radius-sm); box-shadow:var(--shadow); animation:slide .22s ease-out; }
-  .toast[data-kind="ok"]  { border-left-color:var(--ok); }
-  .toast[data-kind="err"] { border-left-color:var(--bad); }
-  .toast svg { width:15px; height:15px; flex:none; margin-top:1px; }
+            display:flex; flex-direction:column; gap:8px; max-width:360px; }
+  .toast { position:relative; overflow:hidden; display:flex; align-items:flex-start; gap:10px;
+           padding:11px 10px 12px 13px; font-size:13px; line-height:1.45;
+           background:color-mix(in oklab, var(--surface) 92%, transparent); backdrop-filter:blur(10px);
+           border:1px solid var(--border); border-radius:var(--r-md); box-shadow:var(--shadow-lg);
+           animation:slide .26s var(--ease); }
+  .toast.out { animation:slide-out .2s ease-in forwards; }
+  .toast > span { flex:1; padding-top:1px; }
+  .toast svg { width:16px; height:16px; flex:none; margin-top:2px; color:var(--muted); }
   .toast[data-kind="ok"] svg  { color:var(--ok); }
   .toast[data-kind="err"] svg { color:var(--bad); }
-  @keyframes slide { from { opacity:0; transform:translateX(14px); } }
+  .toast .tclose { flex:none; width:22px; height:22px; margin:-1px 0 0; display:grid; place-items:center;
+                   border:0; border-radius:6px; background:transparent; color:var(--faint); cursor:pointer; }
+  .toast .tclose:hover { color:var(--text); background:var(--surface-2); }
+  .toast .tclose svg { width:12px; height:12px; margin:0; color:inherit; }
+  .toast .tbar { position:absolute; left:0; bottom:0; height:2px; width:100%; transform-origin:left;
+                 background:var(--faint); animation:tbar 4s linear forwards; }
+  .toast[data-kind="ok"] .tbar  { background:var(--ok); }
+  .toast[data-kind="err"] .tbar { background:var(--bad); }
+  .toast:hover .tbar { animation-play-state:paused; }
+  @keyframes tbar { to { transform:scaleX(0); } }
+  @keyframes slide { from { opacity:0; transform:translateY(8px) scale(.98); } }
+  @keyframes slide-out { to { opacity:0; transform:translateX(16px); } }
 
-  dialog { padding:0; border:1px solid var(--border); border-radius:var(--radius);
-           background:var(--surface); color:var(--text); max-width:420px; width:calc(100% - 32px);
-           box-shadow:var(--shadow); }
-  dialog::backdrop { background:rgb(0 0 0 / .5); backdrop-filter:blur(2px); }
-  .dlg { padding:20px; }
-  .dlg h3 { margin:0 0 8px; font-size:16px; font-weight:600; }
+  /* ── Dialogs ────────────────────────────────────────────────────────── */
+  dialog { padding:0; border:1px solid var(--border); border-radius:16px;
+           background:var(--surface); color:var(--text); max-width:440px; width:calc(100% - 32px);
+           box-shadow:var(--shadow-lg); }
+  dialog[open] { animation:dlg-in .22s var(--ease); }
+  dialog::backdrop { background:rgb(0 0 0 / .5); backdrop-filter:blur(3px); animation:fade .2s ease-out; }
+  @keyframes dlg-in { from { opacity:0; transform:translateY(8px) scale(.98); } }
+  @keyframes fade { from { opacity:0; } }
+  .dlg { padding:22px 22px 18px; }
+  .dlg h3 { margin:0 0 6px; font-size:17px; font-weight:650; letter-spacing:-.01em; }
   .dlg p { margin:0 0 18px; font-size:13.5px; color:var(--muted); line-height:1.55; }
-  .dlg .btn-row { justify-content:flex-end; margin:0; }
+  .dlg p.hint { font-size:12.5px; margin:12px 0 0; }
+  .dlg .btn-row { justify-content:flex-end; margin:18px -22px -18px !important; padding:14px 22px;
+                  border-top:1px solid var(--border); background:color-mix(in oklab, var(--surface-2) 50%, transparent);
+                  border-radius:0 0 16px 16px; }
+  .dlg .sub { display:block; margin:0 0 14px; font-size:13px; color:var(--muted); }
+
+  /* ── Form fields (one look everywhere) ─────────────────────────────── */
+  .finput, .instrow input, .instrow select, .adduser input, .adduser select, .scanrow input[type=text],
+  .login-card input, .logincard input, dialog input:not([type=checkbox]):not([type=radio]), dialog select, dialog textarea {
+    height:34px; padding:0 11px; font:inherit; font-size:13.5px; color:var(--text);
+    background:var(--field); border:1px solid var(--border); border-radius:var(--radius-sm);
+    transition:border-color var(--dur), box-shadow var(--dur); min-width:0; }
+  dialog textarea { height:auto; padding:8px 11px; }
+  :is(.finput, .instrow input, .instrow select, .adduser input, .adduser select, .scanrow input[type=text],
+      .login-card input, .logincard input, dialog input, dialog select, dialog textarea):hover { border-color:var(--border-strong); }
+  :is(.finput, .instrow input, .instrow select, .adduser input, .adduser select, .scanrow input[type=text],
+      .login-card input, .logincard input, dialog input, dialog select, dialog textarea):focus { outline:none; border-color:var(--accent); box-shadow:var(--ring); }
+  ::placeholder { color:var(--faint); }
+  select, .fsort { appearance:none; -webkit-appearance:none; padding-right:28px !important; cursor:pointer;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238b90a0' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") !important;
+    background-repeat:no-repeat !important; background-position:right 8px center !important; background-size:14px !important; }
 
   .sr { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); }
 
-  /* ── Login screen (v6) ─────────────────────────────────────────────── */
-  #login { position:fixed; inset:0; z-index:9990; display:grid; place-items:center;
-           background:var(--bg); }
-  #login[hidden] { display:none; }
-  .login-card { width:min(340px, calc(100vw - 40px)); padding:30px 28px;
+  /* ── Login / setup screen ──────────────────────────────────────────── */
+  #login, .login { position:fixed; inset:0; z-index:9990; display:grid; place-items:center;
+           background:
+             radial-gradient(600px 400px at 50% 20%, color-mix(in oklab, var(--accent) 12%, transparent), transparent 70%),
+             var(--bg); }
+  #login[hidden], .login[hidden] { display:none; }
+  .login-card, .logincard { width:min(360px, calc(100vw - 40px)); padding:32px 28px 28px;
                 background:var(--surface); border:1px solid var(--border);
-                border-radius:var(--radius); box-shadow:var(--shadow);
-                display:flex; flex-direction:column; gap:10px; }
-  .login-card .brand { justify-content:center; }
-  .login-card h1 { text-align:center; font-size:19px; }
-  .login-sub { margin:0 0 6px; text-align:center; font-size:13px; color:var(--muted); }
-  .login-card input { width:100%; height:38px; padding:0 12px; font:inherit; font-size:14px;
-                      color:var(--text); background:var(--bg);
-                      border:1px solid var(--border); border-radius:var(--radius-sm); }
-  .login-card input:focus { outline:none; border-color:var(--accent); }
+                border-radius:18px; box-shadow:var(--hl), var(--shadow-lg);
+                display:flex; flex-direction:column; gap:10px; animation:dlg-in .3s var(--ease); }
+  .login-card .brand, .logincard .brand { justify-content:center; flex-direction:column; gap:12px; }
+  .login-card .brand svg, .logincard .brand svg { width:40px; height:40px; }
+  .login-card h1, .logincard h1 { text-align:center; font-size:21px; }
+  .login-card form, .logincard form { display:flex; flex-direction:column; gap:10px; }
+  .login-card .btn, .logincard .btn { height:38px; margin-top:4px; }
+  .login-sub { margin:0 0 10px; text-align:center; font-size:13px; color:var(--muted); }
+  .login-card input, .logincard input { width:100%; height:40px; font-size:14px; }
   .login-err { margin:0; font-size:12.5px; color:var(--bad); text-align:center; }
-  .userbadge { font-size:12px; color:var(--muted); font-variant-numeric:tabular-nums;
-               white-space:nowrap; max-width:140px; overflow:hidden;
-               text-overflow:ellipsis; }
-  .userbadge b { color:var(--accent); font-weight:600; }
+
+  /* Signed-in user: initial avatar + name/role */
+  .userbadge { display:inline-flex; align-items:center; gap:8px; font-size:12.5px; color:var(--text);
+               white-space:nowrap; max-width:170px; }
+  .userbadge:empty { display:none; }
+  .userbadge .avatar { width:28px; height:28px; flex:none; border-radius:50%; display:grid; place-items:center;
+                       font-size:12px; font-weight:700; text-transform:uppercase; color:var(--accent-ink);
+                       background:linear-gradient(145deg, var(--accent-hover), var(--accent)); }
+  .userbadge .who { display:flex; flex-direction:column; line-height:1.15; min-width:0; }
+  .userbadge .who b { font-weight:600; overflow:hidden; text-overflow:ellipsis; }
+  .userbadge .who small { font-size:10.5px; color:var(--faint); }
 
   /* ── Users view (v6) ───────────────────────────────────────────────── */
   .adduser { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
-  .adduser input, .adduser select { height:32px; padding:0 10px; font:inherit; font-size:13px;
-                                    color:var(--text); background:var(--surface);
-                                    border:1px solid var(--border); border-radius:var(--radius-sm); }
-  .adduser input:focus, .adduser select:focus { outline:none; border-color:var(--accent); }
   .adduser input[type="password"] { min-width:160px; }
   .adduser input[name="username"] { min-width:150px; }
+  [data-view="users"] #adduser-form { padding:14px; border:1px dashed var(--border-strong);
+                                      border-radius:var(--radius); background:color-mix(in oklab, var(--surface) 50%, transparent); }
+  /* Add/edit dialogs: a tidy two-column form instead of wrapping inputs. */
+  dialog .adduser#add-fields, dialog .adduser#edit-fields { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  dialog .adduser#add-fields > *, dialog .adduser#edit-fields > * { width:100%; }
+  dialog .adduser#add-fields .caps-chips, dialog .adduser#edit-fields .caps-chips { grid-column:1 / -1; }
+  .fld { display:flex; flex-direction:column; gap:5px; min-width:0; }
+  .fld > span { font-size:11.5px; font-weight:560; color:var(--muted); }
+  .fld > span::first-letter { text-transform:uppercase; }
+  .fld > input, .fld > select { width:100%; }
+  @media (max-width:560px) {
+    dialog .adduser#add-fields, dialog .adduser#edit-fields { grid-template-columns:1fr; }
+  }
 
   /* viewer: no blanket button-hide — buttons are filtered per-user caps in JS */
 
   /* ── Caps matrix editor (v6.1) ───────────────────────────────────────── */
   .capsdlg { max-width: 720px; width: calc(100vw - 48px); }
-  .capsdlg .dlg { padding: 20px 22px; }
-  .capswrap { overflow:auto; max-height: 55vh; border:1px solid var(--border); border-radius:10px; }
+  .capsdlg .dlg { padding: 22px 22px 18px; }
+  .capswrap { overflow:auto; max-height: 55vh; border:1px solid var(--border); border-radius:var(--r-md); }
   .capsdlg table { border-collapse: collapse; width:100%; font-size:13px; }
   .capsdlg th, .capsdlg td { padding:7px 10px; border-bottom:1px solid var(--border); text-align:left; white-space:nowrap; }
-  .capsdlg th { position:sticky; top:0; background:var(--surface); font-weight:600; }
+  .capsdlg th { position:sticky; top:0; background:var(--surface-2); font-weight:650; }
   .capsdlg th.targets { font-weight:500; color:var(--muted); }
   .capsdlg td.lbl { font-weight:500; }
   .capsdlg input[type="checkbox"] { width:15px; height:15px; accent-color:var(--accent); }
-  .capsdlg .hint { font-size:12px; color:var(--muted); margin:10px 2px 0; }
 
-  /* ── Add host/service dialog (v6.2) ──────────────────────────────────── */
+  /* ── Checkbox chips + switches ───────────────────────────────────────── */
   .caps-chips { display:flex; gap:6px; flex-wrap:wrap; align-items:center; width:100%; }
-  .chipbox { display:inline-flex; gap:4px; align-items:center; font-size:12.5px;
-             color:var(--muted); padding:4px 8px; border:1px solid var(--border);
-             border-radius:999px; cursor:pointer; }
-  .chipbox input { width:auto; accent-color:var(--accent); }
+  .chipbox { display:inline-flex; gap:7px; align-items:center; font-size:12.5px;
+             color:var(--muted); padding:5px 10px; border:1px solid var(--border);
+             border-radius:999px; cursor:pointer; transition:border-color var(--dur), background var(--dur), color var(--dur); }
+  .chipbox:hover { border-color:var(--border-strong); color:var(--text); }
+  .chipbox:has(input:checked) { color:var(--text); border-color:color-mix(in oklab, var(--accent) 50%, var(--border));
+                                background:color-mix(in oklab, var(--accent) 10%, transparent); }
+  .chipbox input { width:auto; margin:0; accent-color:var(--accent); }
+  /* In settings a boolean is a switch row, not a pill. */
+  .setcard .chipbox { display:flex; gap:12px; padding:9px 12px; border-radius:var(--radius-sm);
+                      background:var(--field); line-height:1.4; }
+  .setcard .chipbox:has(input:checked) { background:var(--field); border-color:var(--border); }
+  .setcard .chipbox input[type=checkbox] { appearance:none; -webkit-appearance:none; flex:none; position:relative;
+         width:32px; height:19px; border-radius:99px; background:var(--border-strong); cursor:pointer;
+         transition:background var(--dur); }
+  .setcard .chipbox input[type=checkbox]::before { content:""; position:absolute; top:2px; left:2px;
+         width:15px; height:15px; border-radius:50%; background:#fff; box-shadow:0 1px 2px rgb(0 0 0 / .3);
+         transition:transform .2s var(--ease); }
+  .setcard .chipbox input[type=checkbox]:checked { background:var(--accent); }
+  .setcard .chipbox input[type=checkbox]:checked::before { transform:translateX(13px); }
 
   /* ── Responsive ─────────────────────────────────────────────────────── */
   @media (max-width:860px) {
     header { gap:10px; padding:0 12px; flex-wrap:wrap; height:auto; padding-block:10px; }
-    .health { order:3; width:100%; }
-    .search { max-width:none; order:2; }
+    .health { order:3; width:100%; overflow-x:auto; }
+    .search { max-width:none; order:2; flex-basis:100%; }
+    .hactions { margin-left:auto; }
+    .stamp { min-width:0; }
+    .userbadge .who { display:none; }
     .shell { grid-template-columns:1fr; }
     .sidebar { position:sticky; top:0; height:auto; flex-direction:row; padding:8px 10px;
                border-right:none; border-bottom:1px solid var(--border); overflow-x:auto;
-               background:var(--bg); z-index:20; }
+               background:color-mix(in oklab, var(--bg) 90%, transparent); backdrop-filter:blur(12px); z-index:20;
+               scrollbar-width:none;
+               -webkit-mask-image:linear-gradient(90deg, transparent, #000 14px, #000 calc(100% - 24px), transparent);
+                       mask-image:linear-gradient(90deg, transparent, #000 14px, #000 calc(100% - 24px), transparent); }
     .nav-item { white-space:nowrap; width:auto; }
+    .nav-item[aria-current="page"]::before { left:10px; right:10px; top:auto; bottom:-8px; width:auto; height:2px;
+                                             border-radius:2px 2px 0 0; }
+    .nav-item:not([data-ph-tab],[data-phf-tab],[data-plg-tab]) + .nav-item:is([data-ph-tab],[data-phf-tab],[data-plg-tab]) { margin-top:0; margin-left:13px; }
+    .nav-item:not([data-ph-tab],[data-phf-tab],[data-plg-tab]) + .nav-item:is([data-ph-tab],[data-phf-tab],[data-plg-tab])::after {
+      left:-7px; right:auto; top:8px; bottom:8px; width:1px; height:auto; }
     .navhint { display:none; }
-    main { padding:16px 14px 56px; }
-    th { top:0; }
+    main { padding:18px 14px 64px; }
+    .grid { grid-template-columns:1fr; }
     #toasts { left:14px; right:14px; bottom:14px; max-width:none; }
   }
 
   /* ── v7: filter bars, chips, settings, scan results ─────────────────── */
-  .filterbar { display:flex; flex-wrap:wrap; align-items:center; gap:6px 10px;
-               margin:0 0 14px; }
-  .fgroup { display:inline-flex; flex-wrap:wrap; gap:6px; align-items:center; }
-  .fchip { border:1px solid var(--border); background:var(--surface); color:var(--text);
-           border-radius:10px; padding:3px 10px; font-size:12px; cursor:pointer;
-           transition:background .15s, border-color .15s; }
-  .fchip.on { background:var(--accent); border-color:var(--accent); color:var(--accent-ink);
-              font-weight:600; }
+  .filterbar { display:flex; flex-wrap:wrap; align-items:center; gap:8px 14px;
+               margin:0 0 16px; }
+  .fgroup { display:inline-flex; flex-wrap:wrap; gap:5px; align-items:center; }
+  .fgroup:empty { display:none; }
+  .fgroup::before { font-size:10.5px; font-weight:650; text-transform:uppercase; letter-spacing:.08em;
+                    color:var(--faint); margin-right:4px; }
+  #svc-host-chips::before  { content:"Host"; }
+  #svc-source-chips::before { content:"Source"; }
+  #ct-inst-chips::before   { content:"Instance"; }
+  #ct-tag-chips::before    { content:"Tags"; }
+  #ct-filters .fgroup { flex-basis:100%; }
+  .fchip { border:1px solid var(--border); background:var(--surface); color:var(--muted);
+           border-radius:99px; height:26px; padding:0 11px; font:inherit; font-size:12px; cursor:pointer;
+           transition:background var(--dur), border-color var(--dur), color var(--dur); }
+  .fchip:hover { border-color:var(--border-strong); color:var(--text); }
+  .fchip.on { background:color-mix(in oklab, var(--accent) 16%, var(--surface));
+              border-color:color-mix(in oklab, var(--accent) 55%, transparent); color:var(--text); font-weight:600; }
   .fsort { background:var(--surface); color:var(--text); border:1px solid var(--border);
-           border-radius:10px; padding:3px 8px; font-size:12px; }
-  .setgrid { display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr));
+           border-radius:99px; height:26px; padding:0 10px; font:inherit; font-size:12px; }
+  .fsort:hover { border-color:var(--border-strong); }
+  #svc-sort { margin-left:auto; }
+  .setgrid { display:grid; grid-template-columns:repeat(auto-fill,minmax(340px,1fr));
              gap:16px; align-items:start; }
-  .setcard { background:var(--card); border:1px solid var(--border); border-radius:14px;
-             padding:16px 18px; }
+  .setcard { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius);
+             padding:18px 20px; box-shadow:var(--hl); min-width:0; }
+  .setcard.wide { grid-column:span 2; }
+  @media (max-width:1100px) { .setcard.wide { grid-column:auto; } }
   .setcard .group { margin-top:0; }
-  .flabel { display:block; font-size:12px; color:var(--muted); margin:12px 0 4px; }
-  .finput, .instrow input, .instrow select { width:100%; box-sizing:border-box;
-             background:var(--raised); border:1px solid var(--border); color:var(--text);
-             border-radius:10px; padding:8px 10px; font-size:14px; }
-  .instrow { display:grid; grid-template-columns:90px 1fr 1fr 1fr auto; gap:6px;
+  .setcard > h3.group:first-child { display:flex; align-items:center; gap:8px; margin-bottom:14px; }
+  .setcard .ph-section { border:0; padding:0; background:none; }
+  .flabel { display:block; font-size:12px; font-weight:550; color:var(--muted); margin:14px 0 6px; }
+  .flabel:first-of-type { margin-top:0; }
+  .finput { width:100%; }
+  .instrow { display:grid; grid-template-columns:minmax(80px,.8fr) 1.2fr .8fr 1.6fr 74px 30px; gap:6px;
              margin-bottom:8px; align-items:center; }
-  .instrow .del { background:none; border:none; color:var(--bad); cursor:pointer;
-                  font-size:16px; line-height:1; }
-  .tagpill { display:inline-block; background:var(--raised); border:1px solid var(--border);
-             color:var(--muted); border-radius:8px; padding:0 7px; font-size:11px;
+  .instrow input, .instrow select { width:100%; }
+  .instrow .del { width:30px; height:34px; background:none; border:1px solid transparent; border-radius:var(--radius-sm);
+                  color:var(--faint); cursor:pointer; font-size:14px; line-height:1; transition:color var(--dur), background var(--dur); }
+  .instrow .del:hover { color:var(--bad); background:color-mix(in oklab, var(--bad) 10%, transparent); }
+  @media (max-width:700px) {
+    .instrow { grid-template-columns:1fr 1fr; padding-bottom:10px; border-bottom:1px solid var(--border); }
+    .instrow input[name=itok] { grid-column:1 / -1; }
+  }
+  .tagpill { display:inline-flex; align-items:center; height:18px; background:var(--surface-2); border:1px solid var(--border);
+             color:var(--muted); border-radius:99px; padding:0 7px; font-size:10.5px; font-family:var(--mono);
              margin-left:6px; vertical-align:middle; }
-  .scanrow { display:flex; flex-wrap:wrap; gap:8px; align-items:center; padding:8px 10px;
-             border:1px solid var(--border); border-radius:12px; margin-bottom:8px;
-             background:var(--card); }
+  .scanrow { display:flex; flex-wrap:wrap; gap:8px; align-items:center; padding:9px 12px;
+             border:1px solid var(--border); border-radius:var(--r-md); margin-bottom:8px;
+             background:var(--field); }
   .scanrow .srcc { font-size:11px; color:var(--muted); border:1px solid var(--border);
-                   border-radius:8px; padding:1px 6px; }
-  .scanrow input[type=text] { background:var(--raised); border:1px solid var(--border);
-             color:var(--text); border-radius:8px; padding:5px 8px; font-size:13px; min-width:140px; }
-  .scanwrap { border:1px solid var(--border); border-radius:14px; padding:12px; margin-bottom:16px;
-              background:var(--card); }
+                   border-radius:99px; padding:0 8px; line-height:18px; background:var(--surface-2); }
+  .scanrow input[type=text] { min-width:140px; height:30px; font-size:13px; }
+  .scanrow > .dot { width:8px; height:8px; border-radius:50%; flex:none; background:var(--faint); }
+  .scanrow > .dot.online  { background:var(--ok); box-shadow:0 0 0 3px color-mix(in oklab, var(--ok) 20%, transparent); }
+  .scanrow > .dot.pending { background:var(--warn); }
+  .scanrow > .dot.offline { background:var(--bad); }
+  #plugins-list .scanrow > .btn-row { margin-left:auto !important; }
+  #plugins-list .scanrow strong { font-size:13.5px; font-weight:620; }
+  #plugins-list .scanrow .meta { margin:0; }
+  #ph-appearance .scanrow strong { min-width:70px; font-size:13px; }
+  .scanwrap { border:1px solid var(--border); border-radius:var(--radius); padding:14px; margin-bottom:16px;
+              background:var(--surface); }
   .scanwrap .hint { margin:0 0 10px; }
   .banner { display:flex; gap:10px; align-items:center; border:1px solid var(--border);
-            border-radius:12px; padding:10px 12px; margin-bottom:14px; background:var(--card); }
+            border-radius:var(--r-md); padding:10px 12px; margin-bottom:14px; background:var(--surface); }
   .banner b { margin-right:auto; }
-  .insthead { font-size:12px; color:var(--muted); text-transform:uppercase; letter-spacing:.04em;
-              margin:14px 0 6px; }
+  .insthead { font-size:11px; font-weight:650; color:var(--faint); text-transform:uppercase; letter-spacing:.07em;
+              margin:14px 0 8px; }
   .insthead:first-child { margin-top:0; }
+  /* Settings save bar: always reachable, no hunting for a "Save" card. */
+  .savebar { position:sticky; bottom:16px; z-index:10; display:flex; align-items:center; justify-content:flex-end; gap:12px;
+             margin-top:18px; padding:10px 12px 10px 18px; border:1px solid var(--border); border-radius:var(--radius);
+             background:color-mix(in oklab, var(--surface) 88%, transparent); backdrop-filter:blur(12px);
+             box-shadow:var(--shadow-lg); }
+  .savebar .lbl { margin-right:auto; font-size:12.5px; color:var(--muted); }
+  .savebar .meta { margin:0; font-family:var(--sans); }
 
   /* ── v7.1: update card ─────────────────────────────────────────── */
-  .upd-meta { font-size:12.5px; color:var(--muted); margin:2px 0 10px; }
-  .upd-meta code { font-family:var(--mono); font-size:11.5px; color:var(--text);
-                   background:var(--raised); padding:1px 5px; border-radius:6px; }
+  .upd-meta { font-size:12.5px; color:var(--muted); margin:2px 0 12px; line-height:1.7; }
+  .upd-meta code { font-size:11.5px; color:var(--text); }
   .upd-banner { border:1px solid color-mix(in oklab, var(--bad) 45%, var(--border));
-                border-radius:12px; padding:12px 14px; margin-bottom:12px;
-                background:color-mix(in oklab, var(--bad) 7%, var(--card)); }
+                border-radius:var(--r-md); padding:12px 14px; margin-bottom:12px;
+                background:color-mix(in oklab, var(--bad) 7%, var(--surface)); }
   .upd-banner h3 { margin:0 0 2px; color:var(--bad); font-size:14px; font-weight:600; }
   .upd-banner .upd-rel { font-size:11.5px; color:var(--muted); margin:0; }
   .upd-changelog { font-size:12.5px; color:var(--text); white-space:pre-wrap;
                    max-height:220px; overflow:auto; margin:8px 0 12px;
-                   background:var(--surface); border:1px solid var(--border);
-                   border-radius:10px; padding:8px 10px; }
+                   background:var(--field); border:1px solid var(--border);
+                   border-radius:var(--r-md); padding:8px 10px; }
   .upd-changelog b { color:var(--bad); font-weight:600; }
   .btn-bad-solid { background:var(--bad); color:var(--bad-ink); border:1px solid var(--bad); }
   .btn-bad-solid:hover:not(:disabled) { filter:brightness(1.12); }
@@ -499,6 +716,9 @@
         <line x1="16" y1="10" x2="16" y2="3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
         <line x1="21" y1="19" x2="27" y2="24" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
         <line x1="11" y1="19" x2="5" y2="24" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+        <circle cx="16" cy="3" r="2.2" fill="none" stroke="currentColor" stroke-width="1.5"/>
+        <circle cx="27" cy="24" r="2.2" fill="none" stroke="currentColor" stroke-width="1.5"/>
+        <circle cx="5" cy="24" r="2.2" fill="none" stroke="currentColor" stroke-width="1.5"/>
       </svg>
       <h1>Pi Hub</h1>
     </span>
@@ -565,26 +785,27 @@
   </div>
 
   <div class="hactions">
-    <span class="userbadge" id="userbadge" title="Signed in as"></span>
-    <button class="iconbtn" id="add" title="Add host or service" aria-label="Add host or service" hidden>
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-        <path d="M12 5v14M5 12h14"/>
-      </svg>
-    </button>
-    <button class="iconbtn" id="logout" title="Sign out" aria-label="Sign out" hidden>
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/>
-      </svg>
-    </button>
     <span class="stamp" id="stamp" title="Time of last successful poll"></span>
     <button class="iconbtn" id="refresh" title="Refresh now (r)" aria-label="Refresh now">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
         <path d="M20 11a8 8 0 1 0-2.3 6M20 5v6h-6"/>
       </svg>
     </button>
+    <button class="iconbtn" id="add" title="Add host or service" aria-label="Add host or service" hidden>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+        <path d="M12 5v14M5 12h14"/>
+      </svg>
+    </button>
     <button class="iconbtn" id="theme" title="Switch theme" aria-label="Switch theme">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
         <path d="M21 13a8.5 8.5 0 1 1-10-10 7 7 0 0 0 10 10Z"/>
+      </svg>
+    </button>
+    <span class="hsep" aria-hidden="true"></span>
+    <span class="userbadge" id="userbadge" title="Signed in as"></span>
+    <button class="iconbtn" id="logout" title="Sign out" aria-label="Sign out" hidden>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/>
       </svg>
     </button>
   </div>
@@ -725,7 +946,7 @@
           <label class="chipbox"><input type="checkbox" id="set-autoadd"> <span>Show an &quot;add new&quot; banner when the scan finds dockge services</span></label>
           <p class="hint">nginx stream candidates are never auto-added — they need explicit confirmation.</p>
         </div>
-        <div class="setcard">
+        <div class="setcard wide">
           <h3 class="group">Proxmox instances</h3>
           <div id="inst-list"></div>
           <button class="btn btn-sm btn-quiet" id="inst-add">+ Add instance</button>
@@ -736,12 +957,7 @@
           <div id="scan-sources"></div>
           <p class="hint">nginx-streams and dockge-local scan the Pi itself. dockge-ssh scans a Proxmox host from the host registry (paths are fixed server-side).</p>
         </div>
-        <div class="setcard">
-          <h3 class="group">Save</h3>
-          <button class="btn btn-primary" id="set-save">Save settings</button>
-          <span class="meta" id="set-status"></span>
-        </div>
-        <div class="setcard" id="plugins-card">
+        <div class="setcard wide" id="plugins-card">
           <h3 class="group">Plugins</h3>
           <div id="plugins-list"></div>
           <div id="ph-appearance"></div>
@@ -752,8 +968,13 @@
             <button class="btn btn-quiet" type="submit">+ Add repository</button>
           </form>
           <div id="plugin-sources"></div>
-          <p class="hint" style="margin-top:10px">A repository hosts plugins as GitHub releases with a <code>pihub-plugin.json</code> manifest + tarball asset. Scan finds them; install pulls from the scan cache. Removing a source uninstalls its plugins.</p>
+          <p class="hint">A repository hosts plugins as GitHub releases with a <code>pihub-plugin.json</code> manifest + tarball asset. Scan finds them; install pulls from the scan cache. Removing a source uninstalls its plugins.</p>
         </div>
+      </div>
+      <div class="savebar">
+        <span class="lbl">General, Proxmox instances and scan sources are saved together.</span>
+        <span class="meta" id="set-status"></span>
+        <button class="btn btn-primary" id="set-save">Save settings</button>
       </div>
     </section>
   </main>
@@ -871,7 +1092,10 @@ const SVG = {
   redo: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M20 11a8 8 0 1 0-2.3 6M20 5v6h-6"/></svg>',
   ok:   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 13 4 4L19 7"/></svg>',
   err:  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 7v6M12 17h.01"/><circle cx="12" cy="12" r="9"/></svg>',
-  info: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg>'
+  info: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg>',
+  edit: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16Z"/><path d="m13.5 6.5 4 4"/></svg>',
+  trash:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3"/></svg>',
+  x:    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg>'
 };
 
 const S = { cfg:{}, icons:{}, hosts:[], services:[], containers:[], stacks:[],
@@ -954,7 +1178,9 @@ async function loadUsers(){
     const d = await apiFetch('/api/auth/users').then(r => r.json());
     if (!Array.isArray(d)) { toast(d.error || 'Failed to load users', 'err'); return; }
     $('#users-body').innerHTML = d.map(u =>
-      '<tr><td>' + esc(u.username) + '</td><td>' + esc(u.role) + '</td><td>' + esc(u.created) + '</td>' +
+      '<tr><td><span class="ucell"><span class="userbadge"><span class="avatar" aria-hidden="true">' + esc(String(u.username).charAt(0)) + '</span></span>' + esc(u.username) + '</span></td>' +
+      '<td><span class="rolepill" data-role="' + esc(u.role) + '">' + esc(u.role) + '</span></td>' +
+      '<td class="num">' + esc(String(u.created || '').replace('T', ' ').replace(/:\d\dZ$/, '')) + '</td>' +
       '<td class="actions"><div class="btn-row">' +
       '<button class="btn btn-sm btn-quiet" data-caps="' + esc(u.username) + '">Caps</button>' +
       '<button class="btn btn-sm btn-quiet" data-pw="' + esc(u.username) + '">Password</button>' +
@@ -1092,13 +1318,18 @@ const ADD_FIELDS = {
 };
 const ADD_CAPS = ['wake', 'shutdown', 'reboot', 'grub_switch', 'dualboot'];
 
+/* A visible label above each dialog field — placeholders vanish once a
+   value is filled in, which left the edit dialog unlabeled. */
+const fieldLabel = ph => String(ph).replace(/\s*\(.*\)\s*$/, '');
+const fld = (label, inner) => '<label class="fld"><span>' + esc(label) + '</span>' + inner + '</label>';
+
 function addFields(kind){
   let html = ADD_FIELDS[kind].map(([n, t, ph, req]) =>
-    '<input type="' + t + '" name="' + n + '" placeholder="' + esc(ph) + '"' +
-    (req ? ' required' : '') + '>'
+    fld(fieldLabel(ph), '<input type="' + t + '" name="' + n + '" placeholder="' + esc(ph) + '"' +
+    (req ? ' required' : '') + '>')
   ).join('');
   if (kind === 'host') {
-    html += '<select name="type"><option value="linux">Linux</option><option value="windows">Windows</option></select>';
+    html += fld('OS type', '<select name="type"><option value="linux">Linux</option><option value="windows">Windows</option></select>');
     html += '<div class="caps-chips">' + ADD_CAPS.map(c =>
       '<label class="chipbox"><input type="checkbox" name="cap" value="' + c + '"' +
       (['wake', 'shutdown', 'reboot'].includes(c) ? ' checked' : '') + '>' + c + '</label>'
@@ -1176,18 +1407,18 @@ function editFields(kind, rec){
     if (t === 'select') {
       const opts = Array.isArray(ph) ? ph : [];
       if (n === 'type' && rec.type) opts.unshift([rec.type, rec.type]);
-      return '<select name="' + n + '">' + opts.map(([v, l]) =>
+      return fld(n.replace(/_/g, ' '), '<select name="' + n + '">' + opts.map(([v, l]) =>
         '<option value="' + esc(v) + '"' + (String(val) === String(v) ? ' selected' : '') + '>' + esc(l) + '</option>'
-      ).join('') + '</select>';
+      ).join('') + '</select>');
     }
-    return '<input type="' + t + '" name="' + n + '" value="' + esc(val) + '" placeholder="' + esc(ph) + '"' +
-           (req ? ' required' : '') + '>';
+    return fld(fieldLabel(ph), '<input type="' + t + '" name="' + n + '" value="' + esc(val) + '" placeholder="' + esc(ph) + '"' +
+           (req ? ' required' : '') + '>');
   }).join('');
   if (kind === 'host') {
-    html += '<select name="dual_boot_peer"><option value="">No dual-boot peer</option>' +
+    html += fld('Dual-boot peer', '<select name="dual_boot_peer"><option value="">No dual-boot peer</option>' +
       peers.map(([id, label]) => '<option value="' + esc(id) + '"' +
         (rec.dual_boot_peer === id ? ' selected' : '') + '>' + esc(label) + '</option>').join('') +
-      '</select>';
+      '</select>');
     html += '<div class="caps-chips">' + ADD_CAPS.map(c =>
       '<label class="chipbox"><input type="checkbox" name="cap" value="' + c + '"' +
       ((rec.capabilities || []).includes(c) ? ' checked' : '') + '>' + c + '</label>'
@@ -1265,10 +1496,12 @@ async function refreshConfig(){
     renderServiceFilters();
   } catch(e) {}
 }
-const editBtn  = (kind, id, name) => '<button class="btn btn-sm btn-quiet" data-act="edit" data-kind="' + kind +
-  '" data-id="' + esc(id) + '" data-name="' + esc(name) + '">Edit</button>';
-const delBtn   = (kind, id, name) => '<button class="btn btn-sm btn-quiet" data-act="del" data-kind="' + kind +
-  '" data-id="' + esc(id) + '" data-name="' + esc(name) + '">Delete</button>';
+const editBtn  = (kind, id, name) => '<button class="btn btn-sm btn-icon edit" data-act="edit" data-kind="' + kind +
+  '" data-id="' + esc(id) + '" data-name="' + esc(name) + '" title="Edit ' + esc(name) + '" aria-label="Edit ' + esc(name) + '">' + SVG.edit + '</button>';
+const delBtn   = (kind, id, name) => '<button class="btn btn-sm btn-icon danger" data-act="del" data-kind="' + kind +
+  '" data-id="' + esc(id) + '" data-name="' + esc(name) + '" title="Delete ' + esc(name) + '" aria-label="Delete ' + esc(name) + '">' + SVG.trash + '</button>';
+
+const adminBtns = (kind, id, name) => '<span class="btn-admin">' + editBtn(kind, id, name) + delBtn(kind, id, name) + '</span>';
 
 const iconTile = name => '<span class="icon">' + (S.icons[name] || S.icons.server || '') + '</span>';
 const chip = (state, id) => '<span class="chip"' + (id ? ' id="'+id+'"' : '') + ' data-state="'+esc(state)+'">' +
@@ -1346,9 +1579,12 @@ $('#theme').addEventListener('click', () => {
 function toast(msg, kind='info'){
   const el = document.createElement('div');
   el.className = 'toast'; el.dataset.kind = kind;
-  el.innerHTML = (SVG[kind] || SVG.info) + '<span>' + esc(msg) + '</span>';
+  el.innerHTML = (SVG[kind] || SVG.info) + '<span>' + esc(msg) + '</span>' +
+    '<button class="tclose" aria-label="Dismiss">' + SVG.x + '</button><i class="tbar"></i>';
+  const bye = () => { el.classList.add('out'); setTimeout(() => el.remove(), 200); };
+  el.querySelector('.tclose').addEventListener('click', bye);
+  el.querySelector('.tbar').addEventListener('animationend', bye);
   $('#toasts').appendChild(el);
-  setTimeout(() => el.remove(), 4000);
 }
 
 /* ── Confirm dialog ────────────────────────────────────────────────────── */
@@ -1405,7 +1641,7 @@ function simpleCard(h){
     PH.slot('hosts.card.body', h.id) +
     '<div class="task" id="' + esc(h.id) + '__prog"><span class="spinner"></span><span class="txt"></span></div>' +
     '<div class="btn-row">' +
-      (admin ? editBtn('host', h.id, h.name) + delBtn('host', h.id, h.name) : '') +
+      (admin ? adminBtns('host', h.id, h.name) : '') +
       (caps.includes('wake') && canAct('wake', h.id) ? btn('ok',   SVG.power, 'Wake',     'wake', h.id)       : '') +
       (caps.includes('reboot') && canAct('reboot', h.id) ? btn('quiet',SVG.redo,  'Reboot',   'reboot', h.id)     : '') +
       (caps.includes('shutdown') && canAct('shutdown', h.id) ? btn('bad',  SVG.power, 'Shutdown', 'shutdown', h.id)   : '') +
@@ -1431,10 +1667,10 @@ function dualbootCard(linux, win){
     '<div class="meta">Debian ' + esc(linux.ip) + ' · Win ' + esc(win.ip) + '</div>' +
     PH.slot('hosts.card.body', linux.id) +
     '<div class="task" id="' + esc(linux.id) + '__prog"><span class="spinner"></span><span class="txt"></span></div>' +
-    // admin buttons live OUTSIDE the db-row: paintDualboot owns that row
-    (admin ? '<div class="btn-row" id="db-admin-' + esc(linux.id) + '">' +
-      editBtn('host', linux.id, linux.name) + delBtn('host', linux.id, linux.name) + '</div>' : '') +
-    '<div class="btn-row" id="db-' + esc(linux.id) + '"></div>' +
+    // paintDualboot owns #db-<id> (display:contents) — the admin icons sit
+    // beside it in the same row, outside the part it rewrites
+    '<div class="btn-row"><span class="contents" id="db-' + esc(linux.id) + '"></span>' +
+    (admin ? adminBtns('host', linux.id, linux.name) : '') + '</div>' +
     // plugin actions get their own row: paintDualboot owns #db-<id>
     (PH.has('hosts.card.actions') ? '<div class="btn-row">' + PH.slot('hosts.card.actions', linux.id) + '</div>' : '');
   setTimeout(() => paintDualboot(linux, win, null), 0);
@@ -1570,12 +1806,12 @@ function renderServices(services){
     const origin = (s.host ? esc(s.host) + (s.source ? ' · ' + esc(s.source) : '') : (s.source ? esc(s.source) : ''));
     const card = cardShell('svc-' + id, [s.name, s.url, s.host || '', s.source || ''].join(' '));
     card.innerHTML =
-      '<div class="top">' + iconTile(s.icon) + '<h4>' + esc(s.name) + '</h4>' + chip('pending', 'sdot-' + id) + '</div>' + PH.badgeRow('services.card.badges', s.name) +
+      '<div class="top">' + iconTile(s.icon) + '<h4><a href="' + esc(s.url) + '" target="_blank" rel="noopener">' + esc(s.name) + '</a></h4>' + chip('pending', 'sdot-' + id) + '</div>' + PH.badgeRow('services.card.badges', s.name) +
       '<div class="meta">' + esc(String(s.url).replace(/^https?:\/\//,'')) + '</div>' +
       (origin ? '<div class="meta"><span class="tagpill">' + origin + '</span></div>' : '') +
       '<div class="btn-row">' +
-        (admin ? editBtn('service', s.name, s.name) + delBtn('service', s.name, s.name) : '') +
-        '<a class="btn btn-primary btn-block" id="sopen-' + id + '" href="' + esc(s.url) + '" ' +
+        (admin ? adminBtns('service', s.name, s.name) : '') +
+        '<a class="btn btn-sm btn-open" id="sopen-' + id + '" href="' + esc(s.url) + '" ' +
         'target="_blank" rel="noopener">' + SVG.ext + 'Open</a>' + PH.slot('services.card.actions', s.name) + '</div>';
     g.appendChild(card);
   });
@@ -1594,7 +1830,7 @@ function renderProxmoxCard(pm){
     '<div class="top">' + iconTile('proxmox') + '<h4>Proxmox</h4>' + chip('pending','pdot') + '</div>' +
     '<div class="meta">' + esc(host) + ':8006</div>' +
     '<div class="meta" id="pbadge" style="font-family:var(--sans)">Checking…</div>' +
-    '<div class="btn-row"><a class="btn btn-primary btn-block" id="popen" href="' + esc(url) + '" ' +
+    '<div class="btn-row"><a class="btn btn-sm btn-open" id="popen" href="' + esc(url) + '" ' +
       'target="_blank" rel="noopener">' + SVG.ext + 'Open web UI</a></div>';
   $('#services').prepend(card);
 }
@@ -1609,11 +1845,13 @@ function renderStacks(stacks){
     $('#c-stacks').textContent = '0';
     return;
   }
-  stacks.forEach(st => {
+  [...stacks].sort((a, b) => (a.status !== 'running') - (b.status !== 'running') ||
+                            String(a.name).localeCompare(String(b.name))).forEach(st => {
     const row = document.createElement('div');
     row.className = 'row';
+    row.dataset.state = st.status;
     row.dataset.hay = (st.name + ' ' + st.status).toLowerCase();
-    row.innerHTML = '<span class="name">' + esc(st.name) + '</span>' + PH.slot('stacks.row.badges', st.name) + chip(st.status);
+    row.innerHTML = iconTile('dockge') + '<span class="name">' + esc(st.name) + '</span>' + PH.slot('stacks.row.badges', st.name) + chip(st.status);
     el.appendChild(row);
   });
   $('#c-stacks').textContent = stacks.length;
@@ -1703,7 +1941,7 @@ function paintContainers(){
         ' data-inst="' + esc(inst) + '" data-tags="' + esc((ct.tags || []).join('|')) + '">' +
         '<td>' + esc(inst) + '</td>' +
         '<td class="num">' + esc(ct.vmid) + '</td>' +
-        '<td style="font-weight:500">' + esc(ct.name) + tags + '</td>' +
+        '<td><span class="ct-name">' + esc(ct.name) + '</span>' + (tags ? '<span class="ct-tags" title="' + esc((ct.tags || []).map(t => '#' + t).join(' ')) + '">' + tags + '</span>' : '') + '</td>' +
         '<td>' + chip(ct.status) + '</td>' +
         '<td>' + usage(cpu, cpu == null ? '—' : cpu.toFixed(1) + '%') + '</td>' +
         '<td>' + usage(memPct, memGB == null ? '—' : memGB.toFixed(1) + ' GB') + '</td>' +
@@ -1730,7 +1968,7 @@ function usage(pct, label){
   if (pct == null) return '<span class="meta">' + label + '</span>';
   const p = Math.max(0, Math.min(100, pct));
   return '<div class="usage"><span class="val">' + label + '</span>' +
-         '<span class="bar"><i style="width:' + p.toFixed(0) + '%"' + (p > 85 ? ' data-hot' : '') + '></i></span></div>';
+         '<span class="bar"><i style="width:' + p.toFixed(0) + '%"' + (p > 85 ? ' data-hot' : p > 65 ? ' data-warm' : '') + '></i></span></div>';
 }
 
 /* Delegate all card/container buttons — never inline onclick (XSS: esc() is
@@ -1788,7 +2026,8 @@ function setChip(el, state){
 function stamp(){
   if (!S.lastOk) return;
   const s = Math.round((Date.now() - S.lastOk) / 1000);
-  $('#stamp').textContent = s < 5 ? 'just now' : s < 60 ? s + 's ago' : Math.round(s/60) + 'm ago';
+  $('#stamp').textContent = s < 5 ? 'live' : s < 60 ? s + 's ago' : Math.round(s/60) + 'm ago';
+  $('#stamp').dataset.stale = s > 60 ? 'bad' : s > 20 ? 'warn' : '';
 }
 setInterval(stamp, 5000);
 
@@ -3624,7 +3863,8 @@ function skeletons(sel, n){
     if (r.status === 401) { gateLogin(); return; }        // bad/expired token
     window.USER = await r.json();
   } catch(e) { gateLogin(); return; }                     // network error → login screen
-  $('#userbadge').innerHTML = '<b>' + esc(window.USER.username) + '</b> · ' + esc(window.USER.role);
+  $('#userbadge').innerHTML = '<span class="avatar" aria-hidden="true">' + esc(window.USER.username.charAt(0)) + '</span>' +
+    '<span class="who"><b>' + esc(window.USER.username) + '</b><small>' + esc(window.USER.role) + '</small></span>';
   $('#logout').hidden = false;
   if (window.USER.role === 'admin') {
     $('#users-nav').hidden = false; $('#settings-nav').hidden = false;
