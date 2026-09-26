@@ -242,6 +242,9 @@ class Handler(BaseHTTPRequestHandler):
         cfg = config.get_config()
         if cfg.get("_load_error"):
             return None, ({"error": "Configuration error"}, 503)
+        ah = self.headers.get("Authorization", "")
+        if ah.startswith("Frame "):
+            return self._guard_frame(method, path, ah[len("Frame "):])
         if not config.auth_enabled():
             return {"user": "local", "role": "admin"}, None
         state = auth_mod.users_state()
@@ -268,6 +271,36 @@ class Handler(BaseHTTPRequestHandler):
         session["caps"] = rec.get("caps", {})
         if needed == "admin" and session["role"] != "admin":
             return None, ({"error": "Forbidden"}, 403)             # authenticated, wrong role
+        return session, None
+
+    def _guard_frame(self, method: str, path: str,
+                     token: str) -> tuple[dict | None, tuple[dict, int] | None]:
+        """Authorise a request made by the dashboard on behalf of a sandboxed
+        plugin frame (``Authorization: Frame <token>``).
+
+        The token resolves to the user who opened the frame, but it is scoped:
+        only that plugin's own routes and the read APIs the frame declared.
+        Role and capabilities are re-read from users.json on every request,
+        exactly as for a normal session.
+        """
+        from pi_hub import auth as auth_mod
+        from pi_hub.plugins import frame as frame_mod
+        scope = frame_mod.resolve_token(token)
+        if scope is None:
+            return None, ({"error": "Unauthorized"}, 401)
+        if not frame_mod.allowed(scope, method, path):
+            return None, ({"error": "Forbidden"}, 403)
+        if not config.auth_enabled():
+            session = {"user": "local", "role": "admin"}
+        else:
+            rec = auth_mod.fresh_user(scope["user"])
+            if not rec:
+                return None, ({"error": "Unauthorized"}, 401)
+            session = {"user": scope["user"], "role": rec.get("role", "viewer"),
+                       "caps": rec.get("caps", {})}
+        session["frame"] = {"plugin": scope["plugin"], "frame": scope["frame"]}
+        if auth_mod.classify(method, path) == "admin" and session["role"] != "admin":
+            return None, ({"error": "Forbidden"}, 403)
         return session, None
 
     def _read_body(self) -> dict[str, Any] | None:
@@ -369,6 +402,14 @@ class Handler(BaseHTTPRequestHandler):
             self._json({"error": "Not found"}, 404)
             return
 
+        # Sandboxed plugin frame document.  The one-shot ticket in the URL IS
+        # the credential (an opaque-origin iframe cannot send headers), so
+        # there is no _guard here; a ticket is bound to plugin + frame and
+        # spent by this request.
+        if path.startswith("/plugin-frame/"):
+            self._serve_frame(path, params)
+            return
+
         if path.startswith("/api/"):
             session, err = self._guard("GET", path)
             if err:
@@ -379,6 +420,30 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         self._json({"error": "Not found"}, 404)
+
+    def _serve_frame(self, path: str, params: dict) -> None:
+        from pi_hub.plugins import frame as frame_mod, get_manager
+        parts = path.split("/")                       # ['', 'plugin-frame', plugin, frame]
+        ticket = (params.get("t") or [""])[0]
+        if len(parts) != 4 or not parts[2] or not parts[3] or not ticket:
+            self._json({"error": "Forbidden"}, 403)
+            return
+        doc, code = get_manager().frame_document(parts[2], parts[3], ticket)
+        if doc is None:
+            self._json({"error": "Gone" if code == 410 else "Forbidden" if code == 403 else "Not found"}, code)
+            return
+        body, csp = doc
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        for k, v in frame_mod.FRAME_HEADERS.items():
+            self.send_header(k, v)
+        self.send_header("Content-Security-Policy", csp)
+        self.end_headers()
+        try:
+            self.wfile.write(body)
+        except (BrokenPipeError, ConnectionResetError):
+            pass
 
     # ── POST ──────────────────────────────────────────────────────────────
 

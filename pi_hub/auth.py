@@ -540,6 +540,9 @@ def revoke_user_sessions(username: str, keep_token: str = "") -> None:
             del _sessions[k]
         if keys:
             _save_sessions(_sessions)
+    # Plugin frames opened by this user hold scoped tokens of their own.
+    from pi_hub.plugins import frame as frame_mod
+    frame_mod.revoke(user=username)
 
 
 def sweep_sessions() -> None:
@@ -638,6 +641,8 @@ def classify(method: str, path: str) -> str:
         return "admin"
     if method == "POST" and path == "/api/auth/logout":
         return "read"                              # any authenticated user may log out
+    if method == "POST" and path == "/api/plugins/frames/ticket":
+        return "read"                              # any authenticated user may open a plugin frame
     # v7 (#1): /api/config/* is admin-only.  Bare /api/config stays 'read' —
     # it serves public_config() and must remain readable by any logged-in
     # viewer.  POST/DELETE on /api/config/* fall through to 'admin' anyway.

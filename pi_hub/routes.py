@@ -799,6 +799,12 @@ def handle_post(path: str, params: Params, body: Dict[str, Any],
             return result
         return {"error": "Not found"}, 404
 
+    # ── POST /api/plugins/frames/ticket  (open a sandboxed plugin frame) ────
+    if path == "/api/plugins/frames/ticket":
+        from pi_hub.plugins import get_manager
+        b = body if isinstance(body, dict) else {}
+        return get_manager().frame_ticket(session, b.get("plugin"), b.get("frame"))
+
     # ── POST /api/auth/bootstrap  (public, first-run only) ─────────────────
     if path == "/api/auth/bootstrap":
         if not config.auth_enabled():
@@ -844,6 +850,8 @@ def handle_post(path: str, params: Params, body: Dict[str, Any],
     # ── POST /api/auth/logout  (any authenticated user) ───────────────────
     if path == "/api/auth/logout":
         auth.revoke_session(token)
+        from pi_hub.plugins import frame as frame_mod
+        frame_mod.revoke(user=str((session or {}).get("user", "")) or None)
         return {"success": True}, 200
 
     # ── POST /api/auth/users  (admin — create user) ───────────────────────

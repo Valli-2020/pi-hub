@@ -36,9 +36,10 @@ import time
 import traceback
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
-from pi_hub.plugins import contrib, events
+from pi_hub.plugins import contrib, events, frame as frame_mod
 from pi_hub.plugins.base import (
     Contribution,
+    FrameDef,
     Plugin,
     PluginContext,
     PluginLoadError,
@@ -249,6 +250,7 @@ class _LoadedPlugin:
         self.denied: List[str] = []
         self.config_schema: List[dict] = []
         self.granted: List[str] = []
+        self.frames: Dict[str, frame_mod.LoadedFrame] = {}
         self._thread_names: List[str] = []
 
 
@@ -489,14 +491,23 @@ class PluginManager:
             return False, "all declared capabilities must be approved: " + ", ".join(missing)
         with self._state_lock:
             s = self._load_state()
+            old = self._grant_of(name)
             s["grants"][name] = {
                 "caps": list(st["declared"]),
-                "version": self._grant_of(name).get("version", ""),
+                "version": old.get("version", ""),
                 "approved_at": int(time.time()),
-                "ui_off": bool(self._grant_of(name).get("ui_off", False)),
+                "ui_off": bool(old.get("ui_off", False)),
+                "frames": dict(old.get("frames") or {}),
             }
+            lp = self._plugins.get(name)
+            if lp is not None:
+                # Re-approval re-pins what is loaded and unblocks the frames.
+                for fid, lf in lp.frames.items():
+                    s["grants"][name]["frames"][fid] = {"sha": lf.digest, "version": lp.plugin.version}
+                    lf.blocked = ""
             if not self._save_state():
                 return False, "could not write plugin_state.json"
+        frame_mod.revoke(plugin=name)
         self._bump()
         return True, "approved"
 
@@ -512,6 +523,7 @@ class PluginManager:
             if changed:
                 self._save_state()
         self._failed.pop(name, None)
+        frame_mod.revoke(plugin=name)
 
     def set_ui_off(self, name: str, off: bool) -> Tuple[bool, str]:
         if name not in self._plugins and name not in self._load_state()["grants"]:
@@ -522,6 +534,8 @@ class PluginManager:
             g["ui_off"] = bool(off)
             if not self._save_state():
                 return False, "could not write plugin_state.json"
+        if off:
+            frame_mod.revoke(plugin=name)
         self._bump()
         return True, "ok"
 
@@ -683,6 +697,7 @@ class PluginManager:
             loaded = _LoadedPlugin(plugin, ctx, plugin_dir)
             loaded.granted = sorted(actual)
             self._collect_contributions(name, loaded, actual)
+            self._collect_frames(name, loaded, actual, plugin_dir)
             loaded.config_schema = contrib.validate_config_schema(plugin.get_config_schema())
         except Exception as e:
             ctx.unload()
@@ -696,6 +711,7 @@ class PluginManager:
             s = self._load_state()
             s["grants"].setdefault(name, {"caps": sorted(declared), "approved_at": int(time.time())})
             s["grants"][name]["version"] = plugin.version
+            self._pin_frames(s, name, loaded)
             self._save_state()
 
         # Tasks (API v2: they finally run).
@@ -766,6 +782,102 @@ class PluginManager:
                 loaded.denied.append(f"{c.slot}:{c.id} (needs {need})")
             loaded.contribs.append(_LoadedContribution(c, name, meta, static, granted))
 
+    #: slots a frame may feed through ph.render → the ui.* capability they need
+    @staticmethod
+    def _frame_render_slots() -> Dict[str, str]:
+        return {k: m["cap"] for k, m in contrib.SLOTS.items()
+                if not m.get("static") and k != "tab"}
+
+    def _collect_frames(self, name: str, loaded: _LoadedPlugin, caps: set, plugin_dir: str) -> None:
+        raw = loaded.plugin.get_frames() or []
+        if len(raw) > 4:
+            raise ValueError("too many frames (max 4)")
+        for fd in raw:
+            if not isinstance(fd, FrameDef):
+                raise ValueError("get_frames() must return FrameDef objects")
+            if "ui.frame" not in caps:
+                loaded.denied.append(f"frame:{getattr(fd, 'id', '?')} (needs ui.frame)")
+                continue
+            try:
+                lf = frame_mod.load_frame(name, plugin_dir, fd, caps, self._frame_render_slots())
+            except frame_mod.FrameError as e:
+                raise ValueError(f"frame {getattr(fd, 'id', '?')!r}: {e}") from e
+            if lf.id in loaded.frames:
+                raise ValueError(f"duplicate frame id {lf.id!r}")
+            loaded.frames[lf.id] = lf
+
+    @staticmethod
+    def _pin_frames(state: dict, name: str, loaded: _LoadedPlugin) -> None:
+        """Digest pinning.  The digest of a frame's files is recorded the
+        first time the plugin loads after approval.  Later loads of the SAME
+        plugin version must match it — a frame edited in place is blocked
+        until the admin approves again.  A new plugin version re-pins (an
+        update the admin installed).  Caller holds the state lock."""
+        g = state["grants"].setdefault(name, {"caps": [], "version": "", "approved_at": 0})
+        pins = g.setdefault("frames", {})
+        ver = loaded.plugin.version
+        for fid, lf in loaded.frames.items():
+            pin = pins.get(fid)
+            if pin and pin.get("version") == ver and pin.get("sha") != lf.digest:
+                lf.blocked = "frame files changed since they were approved — approve again"
+            else:
+                pins[fid] = {"sha": lf.digest, "version": ver}
+        for fid in [f for f in pins if f not in loaded.frames]:
+            del pins[fid]
+
+    def frames_manifest(self, session: dict | None) -> List[Dict[str, Any]]:
+        """Frames the caller may mount (part of ``/api/plugins/ui``)."""
+        out: List[Dict[str, Any]] = []
+        if self._safe:
+            return out
+        role = (session or {}).get("role", "")
+        for name in sorted(self._plugins):
+            lp = self._plugins[name]
+            if self._grant_of(name).get("ui_off"):
+                continue
+            for fid, lf in sorted(lp.frames.items()):
+                if lf.blocked:
+                    continue
+                pub = lf.public()
+                pub["surfaces"] = [sf for sf in pub["surfaces"]
+                                   if not (sf["type"] == "settings" and role != "admin")]
+                if pub["surfaces"]:
+                    out.append(pub)
+        return out
+
+    def frame_ticket(self, session: dict | None, plugin: str, frame_id: str) -> Tuple[Dict[str, Any], int]:
+        """Issue the iframe URL + scoped frame token (``POST /api/plugins/frames/ticket``)."""
+        lp = self._plugins.get(plugin) if isinstance(plugin, str) else None
+        lf = lp.frames.get(frame_id) if lp and isinstance(frame_id, str) else None
+        if lf is None or self._safe:
+            return {"error": "Unknown frame"}, 404
+        if self._grant_of(plugin).get("ui_off"):
+            return {"error": "Plugin UI is switched off"}, 403
+        if lf.blocked:
+            return {"error": lf.blocked, "needs_approval": True}, 409
+        if not any(sf["type"] != "settings" or (session or {}).get("role") == "admin"
+                   for sf in lf.spec["surfaces"]):
+            return {"error": "Forbidden"}, 403
+        got = frame_mod.issue(str((session or {}).get("user", "")), plugin, frame_id, lf.spec["reads"])
+        if got is None:
+            return {"error": "Too many frame tickets — slow down"}, 429
+        ticket, token = got
+        return {"url": f"/plugin-frame/{plugin}/{frame_id}?t={ticket}", "frame_token": token,
+                "frame": lf.public()}, 200
+
+    def frame_document(self, plugin: str, frame_id: str, ticket: str) -> Tuple[Optional[Tuple[bytes, str]], int]:
+        """Consume *ticket* and return ``((html, csp), 200)`` or ``(None, status)``."""
+        res = frame_mod.consume_ticket(ticket, plugin, frame_id)
+        if res == "gone":
+            return None, 410
+        if res != "ok":
+            return None, 403
+        lp = self._plugins.get(plugin)
+        lf = lp.frames.get(frame_id) if lp else None
+        if lf is None or lf.blocked or self._safe or self._grant_of(plugin).get("ui_off"):
+            return None, 404
+        return frame_mod.build_document(lf), 200
+
     @staticmethod
     def _check_core_version(plugin: Plugin) -> None:
         from pi_hub import __version__
@@ -800,6 +912,7 @@ class PluginManager:
         if loaded is None:
             return
         events.unsubscribe(name)
+        frame_mod.revoke(plugin=name)
         try:
             loaded.ctx.unload()
         except Exception as e:
@@ -899,6 +1012,7 @@ class PluginManager:
                 "has_config": bool(lp.config_schema),
                 "routes": [{"method": r.method, "path": r.path} for r in lp.routes],
                 "tasks": [t.name for t in lp.tasks],
+                "frames": [{"id": f.id, "blocked": f.blocked} for f in lp.frames.values()],
                 "ui": _serialize_ui(lp.ui),
             }
         for name, info in self._failed.items():
@@ -934,7 +1048,8 @@ class PluginManager:
         even learns about admin-only slots."""
         out: Dict[str, Any] = {"rev": self._rev, "safe": self._safe,
                                "contribs": [], "styles": [], "theme": None,
-                               "layout": None, "options": None, "toast_seq": toast_seq()}
+                               "layout": None, "options": None, "frames": [],
+                               "toast_seq": toast_seq()}
         if self._safe:
             return out
         active = self._load_state().get("active", {})
@@ -974,6 +1089,7 @@ class PluginManager:
                     "icon_svg": lc.c.icon_svg if slot == "tab" else "",
                 })
         out["contribs"].sort(key=lambda c: (c["order"], c["plugin"], c["id"]))
+        out["frames"] = self.frames_manifest(session)
         if role == "admin":
             out["options"] = {"themes": themes, "layouts": layouts,
                               "active": {"theme": active.get("theme", ""),
