@@ -112,6 +112,10 @@ for bad in ["@import 'x';", "a{background:url(http://evil/x)}", "a{b:expression(
             "a{b:c}}", "a{b:c", "a{-moz-binding:url(x)}", "a{content:'\\41'}", "@font-face{src:x}", "a{b:javascript:x}",
             "/* unterminated a{}", "a{background:image-set(x 1x)}", "x{}<!--", "@charset 'x';"]:
     check("css rejected: %r" % bad[:32], rejects(contrib.sanitize_css, bad))
+check("css: braces inside strings cannot close the scope wrapper",
+      rejects(contrib.sanitize_css, 'a{content:"{"}}html{background:red}b{content:"{"}}'))
+check("css: unterminated string rejected", rejects(contrib.sanitize_css, 'a{content:"x}'))
+check("css: a legit content string is fine", contrib.sanitize_css('a::before{content:"ok"}') == 'a::before{content:"ok"}')
 check("css size cap", rejects(contrib.sanitize_css, "a{b:c}" * 6000))
 check("non-string css", rejects(contrib.sanitize_css, {"a": 1}))
 st = contrib.validate_style({"css": ".a{b:c}"}, "my_plugin")

@@ -2052,7 +2052,7 @@ let pcActive = null;
 function openConsent(name, needs){
   pcActive = { name, declared: needs.declared || [] };
   $('#pc-title').textContent = 'Approve ' + name;
-  $('#pc-sub').textContent = name + ' asks for the following access. Nothing of the plugin runs until you approve.';
+  $('#pc-sub').textContent = name + ' asks for the following access. Its code is not loaded until you approve.';
   const list = (needs.declared || []).slice().sort();
   $('#pc-list').innerHTML = list.length ? list.map(c => {
     const info = CAP_INFO[c] || ['Unknown capability', 1];

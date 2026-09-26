@@ -334,8 +334,10 @@ implicitly.
 | `ui.frame` | run your own JavaScript in a sandboxed frame (§9) — high risk |
 
 **Consent.** When an admin enables a plugin, Settings shows what it
-declares in plain language. **Nothing of the plugin is imported until the
-admin approves.** Approvals are stored in `pi_hub_plugins/plugin_state.json`
+declares in plain language. **A plugin that declares its capabilities in
+`pihub-plugin.json` or a plain `capabilities = [...]` class attribute is not
+imported until the admin approves**; one that hides them from that static read
+is still refused after import, and never receives more than was approved. Approvals are stored in `pi_hub_plugins/plugin_state.json`
 (mode 0600). An update that declares new capabilities waits for
 re-approval. Plugins that were already enabled when you upgrade to 8.0 are
 grandfathered with their declared capabilities (plus `ui.tab`).

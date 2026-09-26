@@ -864,6 +864,11 @@ def _uninstall_locked(name: str) -> Tuple[bool, str]:
                 pl["installed"] = False
                 pl["enabled"] = False
     _save_sources()
+    try:                                   # a later plugin of the same name must not inherit the grants
+        from pi_hub.plugins import get_manager
+        get_manager().forget(name)
+    except Exception:
+        pass
     return True, f"plugin '{name}' uninstalled"
 
 

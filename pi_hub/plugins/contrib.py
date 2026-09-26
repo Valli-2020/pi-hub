@@ -384,8 +384,14 @@ def sanitize_css(css: Any) -> str:
             raise ContribError("css contains a forbidden construct: %s" % bad)
     if "<" in stripped:                  # '>' is a legal child combinator
         raise ContribError("css contains a forbidden character")
+    # Braces inside string literals do not count for the browser, so they must
+    # not count here either — otherwise `a{content:"{"}}` balances for us but
+    # closes the plugin's scope wrapper in the browser.
+    unquoted = re.sub(r'"[^"\n]*"|\'[^\'\n]*\'', '""', stripped)
+    if '"' in unquoted.replace('""', "") or "'" in unquoted:
+        raise ContribError("css contains an unterminated string")
     depth = 0
-    for ch in stripped:
+    for ch in unquoted:
         if ch == "{":
             depth += 1
         elif ch == "}":

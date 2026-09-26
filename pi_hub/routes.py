@@ -707,7 +707,12 @@ def handle_get(path: str, params: Params, session: dict | None = None) -> Respon
         # Any authenticated user can see plugin status.  Served by the
         # plugin manager (which delegates to enabled plugins).
         from pi_hub.plugins import get_manager
-        return get_manager().get_status(), 200
+        status = get_manager().get_status()
+        if not session or session.get("role") != "admin":
+            for info in status.values():       # exception text can carry file paths
+                if info.get("last_error"):
+                    info["last_error"] = "failed to load (see the admin's plugin settings)"
+        return status, 200
 
     if path == "/api/plugins/ui":
         # API v2: where the browser places contributions (no data yet),
