@@ -3,6 +3,17 @@
 All notable changes to Pi Hub are documented here. Every release ships a
 changelog entry AND matching GitHub release notes.
 
+## [8.1.1] - 2026-09-27
+
+### Fixed
+
+- Status dots (online/offline chips, header pills, live indicator, plugin
+  list) now sit exactly on the text's centre line; the halo ring that made
+  them look off-centre is gone. Plugin badges get the same fix.
+- Dots no longer shimmer: cards stay put on hover and views fade in
+  without sliding, so nothing moves by sub-pixels. The live indicator is a
+  steady dot and only blinks when data stops arriving.
+
 ## [8.1.0] - 2026-09-26
 
 **A polished dashboard.** Same features, calmer and more consistent UI, and
