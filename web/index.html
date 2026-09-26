@@ -283,11 +283,11 @@
   .btn-icon.danger:hover:not(:disabled) { color:var(--bad); border-color:color-mix(in oklab, var(--bad) 40%, transparent);
                                           background:color-mix(in oklab, var(--bad) 10%, transparent); }
   .btn-row .btn-admin { order:10; margin-left:auto; display:inline-flex; gap:2px; }
-  /* "Open" on service cards: one calm button instead of a wall of accent. */
-  .btn-open { flex:1; background:var(--surface-2); color:var(--text); border-color:var(--border); }
-  .btn-open svg { color:var(--accent); }
-  .btn-open:hover { background:color-mix(in oklab, var(--accent) 14%, var(--surface-2));
-                    border-color:color-mix(in oklab, var(--accent) 45%, var(--border)); }
+  /* "Open" on service cards: the whole button in Pi Hub's own yellow/orange,
+     the one filled button on a card, so the eye goes to the action. */
+  .btn-open { flex:1; background:var(--accent); color:var(--accent-ink); border-color:transparent; }
+  .btn-open svg { color:currentColor; }
+  .btn-open:hover { background:var(--accent-hover); border-color:transparent; }
   .contents { display:contents; }
 
   /* ── Task progress ──────────────────────────────────────────────────── */

@@ -3,6 +3,27 @@
 All notable changes to Pi Hub are documented here. Every release ships a
 changelog entry AND matching GitHub release notes.
 
+## [8.1.2] - 2026-09-27
+
+Service cards get their colour back. Only `web/index.html` changes; no API,
+plugin or config change.
+
+### Changed
+
+- **The "Open" button is filled with Pi Hub's own yellow/orange again.** 8.1.0
+  toned it down to a neutral surface with an orange icon; on a card full of grey
+  text that read as "no action here". The whole button is now `--accent` with
+  `--accent-ink` text and the brighter `--accent-hover` on hover — no new colour
+  is introduced, the button just uses the accent it always had. The icon
+  inherits the text colour instead of carrying its own.
+- **The service name is orange.** It inherited the card text colour, so the only
+  clickable field on the card looked like plain grey text. It now uses a
+  dedicated `--link` token, redder than `--accent` (hue 48 dark / 45 light vs
+  68 / 60 → #f28a4e / #aa4600) so the link and the button next to it stay
+  distinguishable, and it brightens via `--link-hover`.
+- Host, dual-boot and Proxmox cards are untouched: they render a plain `<h4>`,
+  so `.card h4 a` is exactly the service card.
+
 ## [8.1.1] - 2026-09-27
 
 ### Fixed
