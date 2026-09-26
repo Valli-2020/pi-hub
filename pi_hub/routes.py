@@ -814,7 +814,9 @@ def handle_post(path: str, params: Params, body: Dict[str, Any],
             auth.record_failure(username, ip)
             return {"error": res["error"]}, 400
         auth.record_success(username, ip)
-        token = auth.issue_session(username, "admin")
+        token = auth.issue_session(
+            username, "admin",
+            web=bool(isinstance(body, dict) and body.get("client") == "web"))
         return {"token": token, "user": {
             "username": username, "role": "admin", "caps": {},
         }}, 200
@@ -831,7 +833,9 @@ def handle_post(path: str, params: Params, body: Dict[str, Any],
             auth.record_failure(username, ip)
             return {"error": "Invalid credentials"}, 401
         auth.record_success(username, ip)
-        token = auth.issue_session(username, user["role"])
+        token = auth.issue_session(
+            username, user["role"],
+            web=bool(isinstance(body, dict) and body.get("client") == "web"))
         return {"token": token, "user": {
             "username": username, "role": user["role"],
             "caps": user.get("caps", {}),

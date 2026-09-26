@@ -508,7 +508,16 @@ def enable(name: str) -> Tuple[bool, str]:
         return False, "invalid plugin name"
     enabled = _read_manifest()
     if name in enabled:
-        return True, f"plugin '{name}' already enabled"
+        # Listed in plugins.json but maybe not RUNNING (failed to load, or
+        # waited for approval — API v2).  Try to load it now.
+        from pi_hub.plugins import get_manager
+        if name in get_manager()._plugins:
+            return True, f"plugin '{name}' already enabled"
+        try:
+            get_manager().load_plugin(name)
+        except Exception as e:
+            return False, f"plugin failed to load: {e}"
+        return True, f"plugin '{name}' enabled"
     enabled.append(name)
     if not _write_manifest(enabled):
         return False, "could not write plugins.json"
