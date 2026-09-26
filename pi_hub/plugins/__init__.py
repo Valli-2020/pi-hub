@@ -10,7 +10,9 @@ Directory layout::
         plugins/
             __init__.py     ← this module
             base.py          ← Plugin ABC, PluginContext, descriptors
-            manager.py       ← discovery, load, unload, dispatch
+            manager.py       ← discovery, consent, load, unload, dispatch
+            contrib.py       ← API v2 slots, node validation, CSS sanitising
+            events.py        ← API v2 event bus
 
     pi_hub_plugins/          ← user-space plugins (gitignored)
         plugins.json         ← manifest: {"enabled": [...]}
@@ -28,6 +30,8 @@ from pi_hub.plugins.base import (
     TabUIDef,
     CardUIDef,
     ActionDef,
+    Contribution,
+    FrameDef,
     PluginLoadError,
 )
 
@@ -39,6 +43,8 @@ __all__ = [
     "TabUIDef",
     "CardUIDef",
     "ActionDef",
+    "Contribution",
+    "FrameDef",
     "PluginLoadError",
     "get_manager",
     "store",

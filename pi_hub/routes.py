@@ -624,7 +624,7 @@ def handle_get(path: str, params: Params, session: dict | None = None) -> Respon
     # ── Plugin routes (delegated) ─────────────────────────────────────────
     if path.startswith("/api/plugin/"):
         from pi_hub.plugins import get_manager
-        result = get_manager().dispatch("GET", path, session)
+        result = get_manager().dispatch("GET", path, session, query=params)
         if result is not None:
             return result
         return {"error": "Not found"}, 404
@@ -709,10 +709,38 @@ def handle_get(path: str, params: Params, session: dict | None = None) -> Respon
         from pi_hub.plugins import get_manager
         return get_manager().get_status(), 200
 
+    if path == "/api/plugins/ui":
+        # API v2: where the browser places contributions (no data yet),
+        # filtered by the caller's role and capabilities.
+        from pi_hub.plugins import get_manager
+        return get_manager().get_ui_manifest(session), 200
+
+    if path == "/api/plugins/contrib":
+        # API v2: batched contribution data + toasts.  ``ids`` is a
+        # comma-separated list of ``plugin/contribution`` ids; ``since`` is
+        # the last toast sequence number the client has seen.
+        from pi_hub.plugins import get_manager
+        raw = (params.get("ids") or [""])[0]
+        ids = [i for i in raw.split(",") if i][:40]
+        try:
+            since = int((params.get("since") or ["0"])[0])
+        except ValueError:
+            since = 0
+        return get_manager().contrib_data(ids, session, since), 200
+
     if path == "/api/config/plugins/sources":
         # Plugin store sources + cached scan results (ADMIN — classify).
         from pi_hub.plugins import store
         return store.list_sources(), 200
+
+    _gp = [p for p in path.split("/") if p]
+    if len(_gp) == 5 and _gp[1] == "config" and _gp[2] == "plugins":
+        from pi_hub.plugins import get_manager
+        if _gp[4] == "config":            # Configure dialog: schema + values
+            return get_manager().plugin_config_get(_gp[3])
+        if _gp[4] == "approval":          # consent dialog: what would be granted
+            st = get_manager().approval_status(_gp[3])
+            return dict(st, ui=[c for c in (st["declared"] or []) if c.startswith("ui.")]), 200
 
     # ── Prefix routes ────────────────────────────────────────────────────
     if path.startswith("/api/task/"):
@@ -766,7 +794,7 @@ def handle_post(path: str, params: Params, body: Dict[str, Any],
     # ── Plugin routes (delegated) ─────────────────────────────────────────
     if path.startswith("/api/plugin/"):
         from pi_hub.plugins import get_manager
-        result = get_manager().dispatch("POST", path, session, body=body)
+        result = get_manager().dispatch("POST", path, session, body=body, query=params)
         if result is not None:
             return result
         return {"error": "Not found"}, 404
@@ -1103,11 +1131,12 @@ def handle_post(path: str, params: Params, body: Dict[str, Any],
     # in config.json (the guard's synthetic "local" admin does not count).
     _PLUGIN_STORE_MUTATING = False
     if path in ("/api/config/plugins/sources",
-                "/api/config/plugins/install") or (
+                "/api/config/plugins/install",
+                "/api/config/plugins/appearance") or (
             len(parts) == 6 and parts[1] == "config" and parts[2] == "plugins"
             and parts[3] == "sources" and parts[5] == "scan") or (
             len(parts) == 5 and parts[1] == "config" and parts[2] == "plugins"
-            and parts[4] in ("enable", "disable")):
+            and parts[4] in ("enable", "disable", "config", "ui")):
         _PLUGIN_STORE_MUTATING = True
     if _PLUGIN_STORE_MUTATING and (
             (not session) or session.get("user") == "local"):
@@ -1146,11 +1175,63 @@ def handle_post(path: str, params: Params, body: Dict[str, Any],
             return {"error": msg}, 400
         return {"success": True, "message": msg}, 200
 
+    # POST /api/config/plugins/appearance  {theme?, layout?}  (exclusive slots)
+    if path == "/api/config/plugins/appearance":
+        from pi_hub.plugins import get_manager
+        if not isinstance(body, dict):
+            return {"error": "JSON body required"}, 400
+        theme = body.get("theme")
+        layout = body.get("layout")
+        for v in (theme, layout):
+            if v is not None and not isinstance(v, str):
+                return {"error": "theme/layout must be a string"}, 400
+        ok, msg = get_manager().set_appearance(theme, layout)
+        if not ok:
+            return {"error": msg}, 400
+        return {"success": True, "message": "Appearance saved"}, 200
+
+    # POST /api/config/plugins/<name>/config  (Configure dialog)
+    if len(parts) == 5 and parts[1] == "config" and parts[2] == "plugins" \
+            and parts[4] == "config":
+        from pi_hub.plugins import get_manager
+        return get_manager().plugin_config_set(parts[3], body)
+
+    # POST /api/config/plugins/<name>/ui  {off: bool}  (UI kill-switch)
+    if len(parts) == 5 and parts[1] == "config" and parts[2] == "plugins" \
+            and parts[4] == "ui":
+        from pi_hub.plugins import get_manager
+        off = bool(body.get("off")) if isinstance(body, dict) else False
+        ok, msg = get_manager().set_ui_off(parts[3], off)
+        if not ok:
+            return {"error": msg}, 400
+        return {"success": True, "message": "ok"}, 200
+
     # POST /api/config/plugins/<name>/enable  |  /disable
     if len(parts) == 5 and parts[1] == "config" and parts[2] == "plugins" \
             and parts[4] in ("enable", "disable"):
-        from pi_hub.plugins import store
+        from pi_hub.plugins import get_manager, store
         name = parts[3]
+        if parts[4] == "enable":
+            # Consent gate (API v2): the admin must approve every capability
+            # the plugin declares BEFORE any of its code is imported.
+            mgr = get_manager()
+            st = mgr.approval_status(name)
+            if not st["known"]:
+                return {"error": "cannot read the plugin's capabilities — it must "
+                                 "declare them as a literal list or ship "
+                                 "pihub-plugin.json"}, 400
+            if st["pending"]:
+                approve = body.get("approve") if isinstance(body, dict) else None
+                if not isinstance(approve, list):
+                    return {"error": "approval required",
+                            "needs_approval": {
+                                "declared": st["declared"],
+                                "pending": st["pending"],
+                                "ui": [c for c in st["pending"] if c.startswith("ui.")],
+                            }}, 409
+                ok, msg = mgr.approve(name, [str(c) for c in approve])
+                if not ok:
+                    return {"error": msg}, 400
         fn = store.enable if parts[4] == "enable" else store.disable
         ok, msg = fn(name)
         if not ok:
@@ -1164,6 +1245,14 @@ def handle_delete(path: str, params: Params,
                   session: dict | None = None, ip: str = "") -> Response:  # noqa: ARG001
     """Dispatch a DELETE API request (v6 auth user management)."""
     parts = [p for p in path.split("/") if p]
+
+    # ── Plugin routes (delegated, API v2) ─────────────────────────────────
+    if path.startswith("/api/plugin/"):
+        from pi_hub.plugins import get_manager
+        result = get_manager().dispatch("DELETE", path, session, query=params)
+        if result is not None:
+            return result
+        return {"error": "Not found"}, 404
 
     # ── DELETE /api/auth/users/<name>  (admin) ────────────────────────────
     if (
@@ -1204,10 +1293,22 @@ def handle_delete(path: str, params: Params,
 
     # DELETE /api/config/plugins/<name>  (uninstall)
     if len(parts) == 4 and parts[1] == "config" and parts[2] == "plugins":
-        from pi_hub.plugins import store
+        from pi_hub.plugins import get_manager, store
         ok, msg = store.uninstall(parts[3])
         if not ok:
             return {"error": msg}, 400
+        get_manager().forget(parts[3])          # drop grants of the removed plugin
         return {"success": True, "message": msg}, 200
 
+    return {"error": "Not found"}, 404
+
+
+def handle_put(path: str, params: Params, body: Dict[str, Any],
+               session: dict | None = None, ip: str = "") -> Response:  # noqa: ARG001
+    """Dispatch a PUT request.  Only plugin routes use PUT (API v2)."""
+    if path.startswith("/api/plugin/"):
+        from pi_hub.plugins import get_manager
+        result = get_manager().dispatch("PUT", path, session, body=body, query=params)
+        if result is not None:
+            return result
     return {"error": "Not found"}, 404

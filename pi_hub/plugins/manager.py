@@ -1,4 +1,4 @@
-"""Plugin manager — discovery, load, unload, dispatch.
+"""Plugin manager — discovery, consent, load, unload, dispatch, contributions.
 
 Reads the manifest at ``pi_hub_plugins/plugins.json``, loads each enabled
 plugin, and wires its routes/tasks/UI into the Pi Hub server.
@@ -6,15 +6,27 @@ plugin, and wires its routes/tasks/UI into the Pi Hub server.
 Security
 --------
 - Manifest is deny-by-default: only plugins listed in ``enabled`` load.
+- **Consent (API v2):** a plugin only loads when the admin approved every
+  capability it declares.  Approvals live in ``plugin_state.json`` (NOT in
+  ``plugins.json``, which the store rewrites).  Declarations are read
+  *without importing* the plugin (``pihub-plugin.json`` or an AST scan of
+  ``__init__.py``) so no plugin code runs before consent.  An update that
+  declares new capabilities waits for re-approval.  Grants are consent and
+  a kill-switch, not a sandbox: plugin Python runs in-process.
 - Plugin routes are namespaced ``/api/plugin/<name>/`` — no collision.
 - Static files use an exact-match map (no path traversal).
 - Capabilities are checked per-call, not just at load time.
+- Contribution payloads are validated by :mod:`pi_hub.plugins.contrib`
+  before they reach a browser.
 """
 
 from __future__ import annotations
 
+import ast
+import concurrent.futures
 import importlib
 import importlib.util
+import inspect
 import json
 import os
 import re
@@ -22,14 +34,19 @@ import sys
 import threading
 import time
 import traceback
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
+from pi_hub.plugins import contrib, events
 from pi_hub.plugins.base import (
+    Contribution,
     Plugin,
     PluginContext,
     PluginLoadError,
     RouteDef,
 )
+
+#: Plugin API levels this core understands.
+SUPPORTED_API = (1, 2)
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # Module-level singletons
@@ -41,23 +58,42 @@ _instance: Optional["PluginManager"] = None
 # Static file map: {url_path: (plugin_name, real_path)}
 _static_map: Dict[str, Tuple[str, str]] = {}
 
-# Toast buffer: list of (timestamp, plugin_name, message, kind)
+# Toast buffer: list of {seq, ts, plugin, message, kind}
 _toasts: List[Dict[str, Any]] = []
-_TOAST_TTL = 30.0  # seconds
+_toast_lock = threading.Lock()
+_toast_seq = 0
+_TOAST_TTL = 60.0  # seconds
+_TOAST_MAX = 100
+_TOAST_KINDS = {"info": "info", "ok": "ok", "success": "ok", "err": "err",
+                "error": "err", "warn": "info", "warning": "info"}
 
 
 def push_toast(plugin_name: str, message: str, kind: str = "info") -> None:
-    """Add a toast to the global buffer (polled by the frontend)."""
-    _toasts.append({
-        "ts": time.time(),
-        "plugin": plugin_name,
-        "message": message,
-        "kind": kind,
-    })
-    # Expire old toasts
-    cutoff = time.time() - _TOAST_TTL
-    while _toasts and _toasts[0]["ts"] < cutoff:
-        _toasts.pop(0)
+    """Add a toast to the global buffer.  Delivered to browsers through
+    ``GET /api/plugins/contrib?since=<seq>``."""
+    global _toast_seq
+    with _toast_lock:
+        _toast_seq += 1
+        _toasts.append({
+            "seq": _toast_seq,
+            "ts": time.time(),
+            "plugin": str(plugin_name)[:64],
+            "message": str(message)[:300],
+            "kind": _TOAST_KINDS.get(str(kind).lower(), "info"),
+        })
+        cutoff = time.time() - _TOAST_TTL
+        while _toasts and (_toasts[0]["ts"] < cutoff or len(_toasts) > _TOAST_MAX):
+            _toasts.pop(0)
+
+
+def toasts_since(seq: int) -> List[Dict[str, Any]]:
+    with _toast_lock:
+        return [dict(t) for t in _toasts if t["seq"] > seq]
+
+
+def toast_seq() -> int:
+    with _toast_lock:
+        return _toast_seq
 
 
 # ── Core restart signal ──────────────────────────────────────────────────
@@ -101,6 +137,97 @@ def register_plugin_static(
     _static_map[full_url] = (plugin_name, real_file)
 
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# Route matching
+# ═══════════════════════════════════════════════════════════════════════════════
+
+_PARAM_RE = re.compile(r"\{([A-Za-z_][A-Za-z0-9_]*)\}")
+_PARAM_VALUE = r"[A-Za-z0-9._:~-]{1,128}"
+_ROUTE_METHODS = ("GET", "POST", "PUT", "DELETE")
+
+
+class _CompiledRoute:
+    __slots__ = ("route", "regex", "exact")
+
+    def __init__(self, route: RouteDef):
+        self.route = route
+        path = route.path if route.path.startswith("/") else "/" + route.path
+        self.exact = _PARAM_RE.search(path) is None
+        if self.exact:
+            self.regex = None
+        else:
+            pat, last = "", 0
+            for m in _PARAM_RE.finditer(path):
+                pat += re.escape(path[last:m.start()])
+                pat += "(?P<%s>%s)" % (m.group(1), _PARAM_VALUE)
+                last = m.end()
+            pat += re.escape(path[last:])
+            self.regex = re.compile("^" + pat + "$")
+
+
+def _call_filtered(fn: Callable[..., Any], **kw: Any) -> Any:
+    """Call *fn* with only the keyword arguments its signature accepts, so
+    a v1 handler ``(session, body)`` keeps working next to a v2 handler
+    ``(session, body, params, query)``.  ``**kwargs`` receives everything."""
+    try:
+        sig = inspect.signature(fn)
+    except (TypeError, ValueError):
+        return fn(**kw)
+    params = sig.parameters.values()
+    if any(p.kind is inspect.Parameter.VAR_KEYWORD for p in params):
+        return fn(**kw)
+    names = {p.name for p in sig.parameters.values()
+             if p.kind in (inspect.Parameter.POSITIONAL_OR_KEYWORD,
+                           inspect.Parameter.KEYWORD_ONLY)}
+    return fn(**{k: v for k, v in kw.items() if k in names})
+
+
+def caps_allowed(caps: List[str], session: dict | None) -> bool:
+    """Route-style capability check.  ``"admin"`` is the role check; any
+    other name needs a non-empty ``session['caps'][name]`` list (or admin)."""
+    user_role = (session or {}).get("role", "")
+    user_caps = (session or {}).get("caps", {}) if session else {}
+    for cap in caps or []:
+        if cap == "admin":
+            if user_role != "admin":
+                return False
+            continue
+        targets = user_caps.get(cap) if isinstance(user_caps, dict) else None
+        if not ((isinstance(targets, list) and len(targets) > 0) or user_role == "admin"):
+            return False
+    return True
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Loaded plugin wrapper
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+class _LoadedContribution:
+    __slots__ = ("c", "plugin", "cid", "meta", "static", "granted",
+                 "errors", "next_ok", "cache")
+
+    def __init__(self, c: Contribution, plugin: str, meta: dict, static: Any,
+                 granted: bool):
+        self.c = c
+        self.plugin = plugin
+        self.cid = "%s/%s" % (plugin, c.id)
+        self.meta = meta
+        self.static = static
+        self.granted = granted
+        self.errors = 0
+        self.next_ok = 0.0
+        self.cache: Dict[str, Tuple[float, dict]] = {}
+
+    @property
+    def poll(self) -> int:
+        try:
+            p = int(self.c.poll)
+        except (TypeError, ValueError):
+            p = 30
+        return 0 if p <= 0 else max(5, min(3600, p))
+
+
 class _LoadedPlugin:
     """Wrapper around a loaded plugin and its context."""
 
@@ -110,10 +237,43 @@ class _LoadedPlugin:
         self.directory = directory
         self.status = "loaded"
         self.last_error = ""
+        self.api_version = int(getattr(plugin, "plugin_api_version", 1) or 1)
         self.routes: List[RouteDef] = plugin.get_routes()
+        self.compiled: List[_CompiledRoute] = [
+            _CompiledRoute(r) for r in self.routes if r.method in _ROUTE_METHODS]
+        # exact routes win over parameterised ones
+        self.compiled.sort(key=lambda cr: 0 if cr.exact else 1)
         self.tasks = plugin.get_tasks()
         self.ui = plugin.get_ui()
+        self.contribs: List[_LoadedContribution] = []
+        self.denied: List[str] = []
+        self.config_schema: List[dict] = []
+        self.granted: List[str] = []
         self._thread_names: List[str] = []
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Manager
+# ═══════════════════════════════════════════════════════════════════════════════
+
+_MAX_CONTRIBS_PER_PLUGIN = 24
+_MAX_PER_SLOT_PER_PLUGIN = {"containers.column": 2}
+_DEFAULT_PER_SLOT = 4
+_MAX_PLUGIN_COLUMNS = 6
+_PROVIDER_BUDGET = 3.0          # seconds per batch
+_MAX_BATCH = 40
+
+_pool: Optional[concurrent.futures.ThreadPoolExecutor] = None
+_pool_lock = threading.Lock()
+
+
+def _get_pool() -> concurrent.futures.ThreadPoolExecutor:
+    global _pool
+    with _pool_lock:
+        if _pool is None:
+            _pool = concurrent.futures.ThreadPoolExecutor(
+                max_workers=8, thread_name_prefix="plg-contrib")
+        return _pool
 
 
 class PluginManager:
@@ -121,7 +281,12 @@ class PluginManager:
 
     def __init__(self):
         self._plugins: Dict[str, _LoadedPlugin] = {}
+        self._failed: Dict[str, Dict[str, Any]] = {}
         self._root = self._find_plugins_dir()
+        self._rev = 1
+        self._state_lock = threading.RLock()
+        self._state: Optional[dict] = None
+        self._safe = os.environ.get("PIHUB_SAFE_MODE", "") == "1"
 
     @staticmethod
     def get_instance() -> "PluginManager":
@@ -131,6 +296,22 @@ class PluginManager:
                 if _instance is None:
                     _instance = PluginManager()
         return _instance
+
+    # ── Safe mode ──────────────────────────────────────────────────────────
+
+    def set_safe_mode(self, on: bool) -> None:
+        self._safe = bool(on)
+
+    @property
+    def safe_mode(self) -> bool:
+        return self._safe
+
+    @property
+    def rev(self) -> int:
+        return self._rev
+
+    def _bump(self) -> None:
+        self._rev += 1
 
     # ── Discovery ──────────────────────────────────────────────────────────
 
@@ -157,7 +338,7 @@ class PluginManager:
                 data = json.load(f)
             enabled = data.get("enabled", [])
             return [str(e) for e in enabled if isinstance(e, str)]
-        except (OSError, ValueError, KeyError):
+        except (OSError, ValueError, KeyError, AttributeError):
             return []
 
     def _validate_name(self, name: str) -> bool:
@@ -166,12 +347,195 @@ class PluginManager:
         into the repo root."""
         return bool(re.match(r"^(?!\.{1,64}$)[A-Za-z0-9._-]{1,64}$", name))
 
+    # ── Persistent state (grants, appearance) ─────────────────────────────
+
+    def _state_path(self) -> str:
+        return os.path.join(self._root, "plugin_state.json")
+
+    def _load_state(self) -> dict:
+        with self._state_lock:
+            if self._state is not None:
+                return self._state
+            st: dict = {}
+            try:
+                with open(self._state_path()) as f:
+                    st = json.load(f)
+                if not isinstance(st, dict):
+                    st = {}
+            except (OSError, ValueError):
+                st = {}
+            st.setdefault("version", 1)
+            if not isinstance(st.get("grants"), dict):
+                st["grants"] = {}
+            if not isinstance(st.get("active"), dict):
+                st["active"] = {}
+            self._state = st
+            return st
+
+    def _save_state(self) -> bool:
+        with self._state_lock:
+            st = self._load_state()
+            tmp = self._state_path() + ".tmp"
+            try:
+                os.makedirs(self._root, exist_ok=True)
+                fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+                with os.fdopen(fd, "w") as f:
+                    f.write(json.dumps(st, indent=2))
+                    f.flush()
+                    os.fsync(f.fileno())
+                os.replace(tmp, self._state_path())
+                return True
+            except OSError as e:
+                print(f"PluginManager: could not write plugin_state.json: {e}")
+                return False
+
+    def _grant_of(self, name: str) -> dict:
+        g = self._load_state()["grants"].get(name)
+        return g if isinstance(g, dict) else {}
+
+    def granted_caps(self, name: str) -> List[str]:
+        caps = self._grant_of(name).get("caps", [])
+        return [c for c in caps if isinstance(c, str)] if isinstance(caps, list) else []
+
+    def _grandfather(self, enabled: List[str]) -> None:
+        """First 8.0 boot: no plugin_state.json yet — every already-enabled
+        plugin keeps working with its declared capabilities."""
+        if os.path.isfile(self._state_path()):
+            return
+        st = self._load_state()
+        for name in enabled:
+            if not self._validate_name(name):
+                continue
+            declared = self.declared_caps(name)
+            st["grants"][name] = {
+                "caps": list(declared or []),
+                "version": "",
+                "approved_at": int(time.time()),
+                "grandfathered": True,
+            }
+        self._save_state()
+
+    # ── Declared capabilities (without importing the plugin) ──────────────
+
+    def declared_caps(self, name: str) -> Optional[List[str]]:
+        """Capabilities a plugin declares, read WITHOUT importing it:
+        ``pihub-plugin.json`` ``capabilities`` if present, else an AST scan
+        for literal ``capabilities = [...]`` assignments in ``__init__.py``.
+        Returns ``None`` when the declaration cannot be determined."""
+        if not self._validate_name(name):
+            return None
+        d = os.path.join(self._root, name)
+        mf = os.path.join(d, "pihub-plugin.json")
+        if os.path.isfile(mf):
+            try:
+                with open(mf) as f:
+                    data = json.load(f)
+                caps = data.get("capabilities", [])
+                if isinstance(caps, list) and all(isinstance(c, str) for c in caps):
+                    return sorted(set(caps))
+            except (OSError, ValueError, AttributeError):
+                pass
+            return None
+        init = os.path.join(d, "__init__.py")
+        try:
+            with open(init, encoding="utf-8") as f:
+                tree = ast.parse(f.read())
+        except (OSError, SyntaxError, ValueError):
+            return None
+        found: set = set()
+        for node in ast.walk(tree):
+            target = value = None
+            if isinstance(node, ast.Assign) and len(node.targets) == 1:
+                target, value = node.targets[0], node.value
+            elif isinstance(node, ast.AnnAssign):
+                target, value = node.target, node.value
+            if target is None or value is None:
+                continue
+            tname = target.id if isinstance(target, ast.Name) else None
+            if tname != "capabilities":
+                continue
+            try:
+                lit = ast.literal_eval(value)
+            except (ValueError, SyntaxError):
+                return None
+            if not isinstance(lit, (list, tuple)) or not all(isinstance(c, str) for c in lit):
+                return None
+            found.update(lit)
+        return sorted(found)
+
+    def approval_status(self, name: str) -> Dict[str, Any]:
+        declared = self.declared_caps(name)
+        granted = set(self.granted_caps(name))
+        pending = [c for c in (declared or []) if c not in granted]
+        return {
+            "declared": declared,
+            "granted": sorted(granted),
+            "pending": pending,
+            "known": declared is not None,
+        }
+
+    def approve(self, name: str, caps: List[str]) -> Tuple[bool, str]:
+        """Record the admin's approval.  The admin must approve the whole
+        declared set (a plugin with a partial grant would run half-broken)."""
+        if not self._validate_name(name):
+            return False, "invalid plugin name"
+        st = self.approval_status(name)
+        if not st["known"]:
+            return False, ("cannot read the plugin's capabilities — declare them "
+                           "as a literal list or ship pihub-plugin.json")
+        want = set(caps or [])
+        missing = [c for c in st["declared"] if c not in want]
+        if missing:
+            return False, "all declared capabilities must be approved: " + ", ".join(missing)
+        with self._state_lock:
+            s = self._load_state()
+            s["grants"][name] = {
+                "caps": list(st["declared"]),
+                "version": self._grant_of(name).get("version", ""),
+                "approved_at": int(time.time()),
+                "ui_off": bool(self._grant_of(name).get("ui_off", False)),
+            }
+            if not self._save_state():
+                return False, "could not write plugin_state.json"
+        self._bump()
+        return True, "approved"
+
+    def forget(self, name: str) -> None:
+        """Drop grants of an uninstalled plugin."""
+        with self._state_lock:
+            s = self._load_state()
+            changed = s["grants"].pop(name, None) is not None
+            for slot in ("theme", "layout"):
+                if str(s["active"].get(slot, "")).startswith(name + "/"):
+                    s["active"].pop(slot, None)
+                    changed = True
+            if changed:
+                self._save_state()
+        self._failed.pop(name, None)
+
+    def set_ui_off(self, name: str, off: bool) -> Tuple[bool, str]:
+        if name not in self._plugins and name not in self._load_state()["grants"]:
+            return False, "unknown plugin"
+        with self._state_lock:
+            s = self._load_state()
+            g = s["grants"].setdefault(name, {"caps": [], "version": "", "approved_at": 0})
+            g["ui_off"] = bool(off)
+            if not self._save_state():
+                return False, "could not write plugin_state.json"
+        self._bump()
+        return True, "ok"
+
     # ── Load ───────────────────────────────────────────────────────────────
 
     def load_all(self) -> None:
         """Load every enabled plugin from the manifest.  Failures are
-        logged and the plugin is skipped (other plugins keep loading)."""
+        logged, remembered (shown in Settings) and the plugin is skipped
+        (other plugins keep loading)."""
+        if self._safe:
+            print("PluginManager: SAFE MODE — no plugins loaded")
+            return
         enabled = self._read_manifest()
+        self._grandfather(enabled)
         for name in enabled:
             if not self._validate_name(name):
                 print(f"PluginManager: invalid plugin name '{name}' — skipped")
@@ -182,7 +546,26 @@ class PluginManager:
                 print(f"PluginManager: failed to load '{name}': {e}")
 
     def load_plugin(self, name: str) -> None:
-        """Load a single plugin by name."""
+        """Load a single plugin by name (records the failure on error)."""
+        try:
+            self._load_plugin(name)
+        except PluginLoadError as e:
+            cur = self._failed.get(name)
+            if not cur or cur.get("status") != "needs_approval":
+                self._failed[name] = {"status": "error", "error": str(e)}
+            self._bump()
+            raise
+        except Exception as e:                       # unexpected: keep the server up
+            traceback.print_exc()
+            self._failed[name] = {"status": "error", "error": f"unexpected: {e}"}
+            self._bump()
+            raise PluginLoadError(f"unexpected error: {e}") from e
+
+    def _load_plugin(self, name: str) -> None:
+        if self._safe:
+            raise PluginLoadError("safe mode is on")
+        if not self._validate_name(name):
+            raise PluginLoadError("invalid plugin name")
         plugin_dir = os.path.join(self._root, name)
         if not os.path.isdir(plugin_dir):
             raise PluginLoadError(f"plugin directory not found: {plugin_dir}")
@@ -191,9 +574,23 @@ class PluginManager:
         if not os.path.isfile(init_path):
             raise PluginLoadError(f"missing __init__.py in {plugin_dir}")
 
+        # Consent gate — BEFORE any plugin code is imported.
+        st = self.approval_status(name)
+        if not st["known"]:
+            raise PluginLoadError(
+                "cannot determine the plugin's capabilities without importing it — "
+                "declare them as a literal list or ship pihub-plugin.json")
+        if st["pending"]:
+            self._failed[name] = {"status": "needs_approval", "pending": st["pending"],
+                                  "declared": st["declared"],
+                                  "error": "waiting for approval: " + ", ".join(st["pending"])}
+            raise PluginLoadError("needs approval: " + ", ".join(st["pending"]))
+        declared = set(st["declared"])
+
         # Import the plugin module
         spec = importlib.util.spec_from_file_location(
-            f"pi_hub_plugins.{name}", init_path
+            f"pi_hub_plugins.{name}", init_path,
+            submodule_search_locations=[plugin_dir],
         )
         if spec is None or spec.loader is None:
             raise PluginLoadError(f"cannot import plugin module: {name}")
@@ -202,9 +599,17 @@ class PluginManager:
         try:
             spec.loader.exec_module(mod)
         except Exception as e:
-            sys.modules.pop(f"pi_hub_plugins.{name}", None)
+            self._drop_modules(name)
             raise PluginLoadError(f"import failed: {e}") from e
 
+        try:
+            self._finish_load(name, plugin_dir, init_path, mod, declared)
+        except BaseException:
+            self._drop_modules(name)
+            raise
+
+    def _finish_load(self, name: str, plugin_dir: str, init_path: str,
+                     mod: Any, declared: set) -> None:
         # Find the Plugin subclass.  An explicit PLUGIN_CLASS wins; the
         # scan is the fallback and is deliberate about what it accepts —
         # dir() is alphabetical, so a module that also defines a shared
@@ -227,7 +632,6 @@ class PluginManager:
         if plugin_cls is None:
             raise PluginLoadError(f"no Plugin subclass found in {init_path}")
 
-        # Instantiate and load
         plugin = plugin_cls()
         # D5 (review 2026-08-18): the manager keys everything by the
         # DIRECTORY name, but PluginContext addresses plugins by
@@ -239,19 +643,128 @@ class PluginManager:
                 f"plugin name '{plugin.name}' does not match directory "
                 f"'{name}' (PLUGINS.md: name must equal the directory name)")
         plugin.name = name
-        # Check core version compatibility
+
+        api = getattr(plugin, "plugin_api_version", 1)
+        if not isinstance(api, int) or isinstance(api, bool) or api not in SUPPORTED_API:
+            raise PluginLoadError(
+                f"unsupported plugin_api_version {api!r} (this core supports "
+                f"{', '.join(str(a) for a in SUPPORTED_API)})")
         self._check_core_version(plugin)
-        # Build context with declared capabilities
-        ctx = PluginContext(plugin, plugin_dir, plugin.capabilities)
-        loaded = _LoadedPlugin(plugin, ctx, plugin_dir)
+
+        # The runtime declaration must match what the admin approved.
+        actual = set(plugin.capabilities or [])
+        extra = sorted(actual - declared)
+        if extra:
+            raise PluginLoadError(
+                "plugin declares capabilities that were not in its approved "
+                "declaration: " + ", ".join(extra))
+        system_caps = sorted(c for c in actual if not c.startswith("ui."))
+        ctx = PluginContext(plugin, plugin_dir, system_caps)
+
+        # Config migration (version changed since the last start).
+        g = self._grant_of(name)
+        old_ver = str(g.get("version") or "")
+        if old_ver and old_ver != plugin.version:
+            try:
+                new_cfg = plugin.migrate_config(old_ver, dict(ctx.get_config()))
+                if isinstance(new_cfg, dict) and new_cfg != ctx.get_config():
+                    ctx._replace_config(new_cfg)
+            except Exception:
+                traceback.print_exc()
+                print(f"PluginManager: migrate_config failed for '{name}'")
+
         try:
             plugin.load(ctx)
         except Exception as e:
             ctx.unload()
             raise PluginLoadError(f"plugin load() raised: {e}") from e
 
+        try:
+            loaded = _LoadedPlugin(plugin, ctx, plugin_dir)
+            loaded.granted = sorted(actual)
+            self._collect_contributions(name, loaded, actual)
+            loaded.config_schema = contrib.validate_config_schema(plugin.get_config_schema())
+        except Exception as e:
+            ctx.unload()
+            raise PluginLoadError(f"invalid plugin descriptors: {e}") from e
+
         self._plugins[name] = loaded
-        print(f"PluginManager: loaded '{name}' v{plugin.version}")
+        self._failed.pop(name, None)
+
+        # Version stamp for the next migrate_config decision.
+        with self._state_lock:
+            s = self._load_state()
+            s["grants"].setdefault(name, {"caps": sorted(declared), "approved_at": int(time.time())})
+            s["grants"][name]["version"] = plugin.version
+            self._save_state()
+
+        # Tasks (API v2: they finally run).
+        for t in loaded.tasks:
+            if getattr(t, "autostart", True) and callable(getattr(t, "fn", None)):
+                try:
+                    ctx.run_task(t.name, t.fn, interval=getattr(t, "interval", 0))
+                except Exception:
+                    traceback.print_exc()
+
+        # Events.
+        wanted = [e for e in (plugin.events or []) if isinstance(e, str)]
+        if type(plugin).on_host_state_change is not Plugin.on_host_state_change:
+            wanted.append("host.state")
+        if type(plugin).on_scan_complete is not Plugin.on_scan_complete:
+            wanted.append("scan.complete")
+        if wanted:
+            events.subscribe(name, list(dict.fromkeys(wanted)),
+                             self._event_fn(plugin), actual)
+
+        self._bump()
+        print(f"PluginManager: loaded '{name}' v{plugin.version} (api {api})")
+
+    @staticmethod
+    def _event_fn(plugin: Plugin) -> Callable[[str, dict], None]:
+        def fn(event: str, payload: dict) -> None:
+            if event in (plugin.events or []):
+                plugin.on_event(event, payload)
+            if event == "host.state" and \
+                    type(plugin).on_host_state_change is not Plugin.on_host_state_change:
+                plugin.on_host_state_change(str(payload.get("host_id", "")),
+                                            str(payload.get("new", "")))
+            if event == "scan.complete" and \
+                    type(plugin).on_scan_complete is not Plugin.on_scan_complete:
+                plugin.on_scan_complete(dict(payload))
+        return fn
+
+    def _collect_contributions(self, name: str, loaded: _LoadedPlugin, caps: set) -> None:
+        raw = loaded.plugin.get_contributions() or []
+        if len(raw) > _MAX_CONTRIBS_PER_PLUGIN:
+            raise ValueError(f"too many contributions (max {_MAX_CONTRIBS_PER_PLUGIN})")
+        seen: set = set()
+        per_slot: Dict[str, int] = {}
+        for c in raw:
+            if not isinstance(c, Contribution):
+                raise ValueError("get_contributions() must return Contribution objects")
+            meta = contrib.SLOTS.get(c.slot)
+            if meta is None:
+                raise ValueError(f"unknown slot {c.slot!r}")
+            if not isinstance(c.id, str) or not contrib.CONTRIB_ID_RE.match(c.id):
+                raise ValueError(f"invalid contribution id {c.id!r} (use [a-z0-9-], max 32)")
+            if c.id in seen:
+                raise ValueError(f"duplicate contribution id {c.id!r}")
+            seen.add(c.id)
+            per_slot[c.slot] = per_slot.get(c.slot, 0) + 1
+            if per_slot[c.slot] > _MAX_PER_SLOT_PER_PLUGIN.get(c.slot, _DEFAULT_PER_SLOT):
+                raise ValueError(f"too many contributions in slot {c.slot!r}")
+            static = None
+            if meta.get("static"):
+                static = contrib.validate_static(c.slot, c.static, name)
+            elif not callable(c.provider):
+                raise ValueError(f"contribution {c.id!r} needs a provider")
+            need = meta["cap"]
+            if c.slot == "style" and static and static.get("global"):
+                need = "ui.style.global"
+            granted = need in caps
+            if not granted:
+                loaded.denied.append(f"{c.slot}:{c.id} (needs {need})")
+            loaded.contribs.append(_LoadedContribution(c, name, meta, static, granted))
 
     @staticmethod
     def _check_core_version(plugin: Plugin) -> None:
@@ -264,6 +777,16 @@ class PluginManager:
                 f"running {__version__}"
             )
 
+    @staticmethod
+    def _drop_modules(name: str) -> None:
+        """Remove the plugin module AND its submodules so a later reinstall
+        loads FRESH code (a multi-file plugin such as hermes would
+        otherwise keep serving the old ``pi_hub_plugins.<name>.auth``)."""
+        base = f"pi_hub_plugins.{name}"
+        for key in list(sys.modules):
+            if key == base or key.startswith(base + "."):
+                sys.modules.pop(key, None)
+
     # ── Unload ─────────────────────────────────────────────────────────────
 
     def unload_all(self) -> None:
@@ -273,8 +796,10 @@ class PluginManager:
 
     def unload_plugin(self, name: str) -> None:
         loaded = self._plugins.pop(name, None)
+        self._failed.pop(name, None)
         if loaded is None:
             return
+        events.unsubscribe(name)
         try:
             loaded.ctx.unload()
         except Exception as e:
@@ -287,8 +812,9 @@ class PluginManager:
         # D6 (review 2026-08-18): drop the module from sys.modules so a
         # later reinstall loads a FRESH module instead of the stale one
         # (and so the old module can be GC'd with its threads' references).
-        sys.modules.pop(f"pi_hub_plugins.{name}", None)
+        self._drop_modules(name)
         loaded.status = "unloaded"
+        self._bump()
 
     # ── Route dispatch ─────────────────────────────────────────────────────
 
@@ -298,17 +824,17 @@ class PluginManager:
         path: str,
         session: dict | None,
         body: dict | None = None,
+        query: dict | None = None,
     ) -> Tuple[Any, int] | None:
         """Dispatch a request to a plugin route.
 
         ``path`` is the full request path (e.g. ``/api/plugin/foo/containers``).
-        Returns ``(data, status)`` or ``None`` if no plugin matches."""
-        # Strip the /api/plugin/ prefix
+        Routes may contain ``{param}`` segments (exact routes win).  Returns
+        ``(data, status)`` or ``None`` if no plugin matches."""
         prefix = "/api/plugin/"
         if not path.startswith(prefix):
             return None
         rest = path[len(prefix):]
-        # Find the plugin name (next path segment)
         parts = rest.split("/", 1)
         name = parts[0]
         sub_path = "/" + parts[1] if len(parts) > 1 else "/"
@@ -317,30 +843,29 @@ class PluginManager:
         if loaded is None:
             return {"error": f"Unknown plugin: {name}"}, 404
 
-        # Match method + path
-        for route in loaded.routes:
+        for cr in loaded.compiled:
+            route = cr.route
             if route.method != method:
                 continue
-            if route.path != sub_path:
-                continue
-            # Check user caps.  Plugin route caps are capability names
-            # ("admin" is special-cased as the role check).  For
-            # non-admin caps the user's caps dict must list the
-            # capability AND permit at least one target — an empty list
-            # means explicitly permitted nothing and must NOT pass.
-            user_role = (session or {}).get("role", "")
-            user_caps = (session or {}).get("caps", {}) if session else {}
-            for cap in route.caps:
-                if cap == "admin" and user_role != "admin":
-                    return {"error": "Forbidden"}, 403
-                if cap != "admin":
-                    targets = user_caps.get(cap) if isinstance(user_caps, dict) else None
-                    allowed = (isinstance(targets, list) and len(targets) > 0) \
-                        or user_role == "admin"
-                    if not allowed:
-                        return {"error": "Forbidden"}, 403
+            params: Dict[str, str] = {}
+            if cr.exact:
+                rp = route.path if route.path.startswith("/") else "/" + route.path
+                if rp != sub_path:
+                    continue
+            else:
+                m = cr.regex.match(sub_path)
+                if not m:
+                    continue
+                params = m.groupdict()
+            # Check user caps (see caps_allowed).
+            if not caps_allowed(route.caps, session):
+                return {"error": "Forbidden"}, 403
+            flat_query = {k: (v[0] if isinstance(v, list) and v else v)
+                          for k, v in (query or {}).items()}
             try:
-                result = route.handler(session=session, body=body or {})
+                result = _call_filtered(route.handler, session=session,
+                                        body=body or {}, params=params,
+                                        query=flat_query)
                 if isinstance(result, tuple):
                     return result
                 return result, 200
@@ -357,20 +882,239 @@ class PluginManager:
 
     def get_status(self) -> Dict[str, Any]:
         """Return plugin status for the ``/api/plugins/list`` endpoint."""
-        return {
-            name: {
+        out: Dict[str, Any] = {}
+        st = self._load_state()
+        for name, lp in self._plugins.items():
+            out[name] = {
                 "name": lp.plugin.name,
                 "version": lp.plugin.version,
                 "description": lp.plugin.description,
                 "status": lp.status,
                 "last_error": lp.last_error,
                 "capabilities": lp.plugin.capabilities,
+                "api_version": lp.api_version,
+                "granted": lp.granted,
+                "denied": lp.denied,
+                "ui_off": bool(self._grant_of(name).get("ui_off")),
+                "has_config": bool(lp.config_schema),
                 "routes": [{"method": r.method, "path": r.path} for r in lp.routes],
                 "tasks": [t.name for t in lp.tasks],
                 "ui": _serialize_ui(lp.ui),
             }
-            for name, lp in self._plugins.items()
-        }
+        for name, info in self._failed.items():
+            if name in out:
+                continue
+            out[name] = {
+                "name": name, "version": "", "description": "",
+                "status": info.get("status", "error"),
+                "last_error": info.get("error", ""),
+                "capabilities": info.get("declared") or [],
+                "pending": info.get("pending") or [],
+                "api_version": 0, "granted": [], "denied": [], "ui_off": False,
+                "has_config": False, "routes": [], "tasks": [], "ui": [],
+            }
+        return out
+
+    # ── Contributions (API v2) ─────────────────────────────────────────────
+
+    def _visible(self, lc: _LoadedContribution, session: dict | None) -> bool:
+        if not lc.granted:
+            return False
+        if self._grant_of(lc.plugin).get("ui_off"):
+            return False
+        role = (session or {}).get("role", "")
+        if lc.meta.get("admin") and role != "admin":
+            return False
+        return caps_allowed(lc.c.caps, session)
+
+    def get_ui_manifest(self, session: dict | None) -> Dict[str, Any]:
+        """What the browser needs to place contributions (no data yet).
+
+        Filtered by the caller's role and capabilities, so a viewer never
+        even learns about admin-only slots."""
+        out: Dict[str, Any] = {"rev": self._rev, "safe": self._safe,
+                               "contribs": [], "styles": [], "theme": None,
+                               "layout": None, "options": None, "toast_seq": toast_seq()}
+        if self._safe:
+            return out
+        active = self._load_state().get("active", {})
+        role = (session or {}).get("role", "")
+        themes, layouts = [], []
+        n_columns = 0
+        for name in sorted(self._plugins):
+            lp = self._plugins[name]
+            for lc in lp.contribs:
+                if not self._visible(lc, session):
+                    continue
+                slot = lc.c.slot
+                if slot == "theme":
+                    themes.append({"id": lc.cid, "label": lc.c.label or lc.cid})
+                    if active.get("theme") == lc.cid:
+                        out["theme"] = {"id": lc.cid, "tokens": lc.static["tokens"]}
+                    continue
+                if slot == "layout":
+                    layouts.append({"id": lc.cid, "label": lc.c.label or lc.cid})
+                    if active.get("layout") == lc.cid:
+                        out["layout"] = dict(lc.static, id=lc.cid)
+                    continue
+                if slot == "style":
+                    out["styles"].append({"id": lc.cid, "plugin": name,
+                                          "css": lc.static["css"],
+                                          "global": lc.static["global"]})
+                    continue
+                if slot == "containers.column":
+                    n_columns += 1
+                    if n_columns > _MAX_PLUGIN_COLUMNS:
+                        continue
+                out["contribs"].append({
+                    "id": lc.cid, "plugin": name, "slot": slot,
+                    "keyed": bool(lc.meta.get("keyed")),
+                    "poll": lc.poll, "order": lc.c.order,
+                    "label": str(lc.c.label or "")[:80],
+                    "icon_svg": lc.c.icon_svg if slot == "tab" else "",
+                })
+        out["contribs"].sort(key=lambda c: (c["order"], c["plugin"], c["id"]))
+        if role == "admin":
+            out["options"] = {"themes": themes, "layouts": layouts,
+                              "active": {"theme": active.get("theme", ""),
+                                         "layout": active.get("layout", "")}}
+        return out
+
+    def find_contribution(self, cid: str) -> Optional[_LoadedContribution]:
+        plugin, _, rest = str(cid).partition("/")
+        lp = self._plugins.get(plugin)
+        if not lp or not rest:
+            return None
+        for lc in lp.contribs:
+            if lc.c.id == rest:
+                return lc
+        return None
+
+    def _run_provider(self, lc: _LoadedContribution, session: dict | None) -> dict:
+        """Call a provider and validate its result (raises on any problem)."""
+        raw = _call_filtered(lc.c.provider, session=session)
+        if lc.meta.get("keyed"):
+            return {"keyed": True, "nodes": contrib.validate_keyed(raw)}
+        return {"keyed": False, "node": contrib.validate_node(raw)}
+
+    def contrib_data(self, ids: List[str], session: dict | None,
+                     since: int = 0) -> Dict[str, Any]:
+        """Data for the requested contributions (batched, cached, isolated).
+
+        Every provider runs in a small thread pool with a total 3 s
+        budget.  A failing provider yields ``{ok: false}`` for that
+        contribution only; after 5 consecutive errors it backs off
+        exponentially (up to 5 minutes) instead of being hammered."""
+        result: Dict[str, Any] = {}
+        futures: Dict[concurrent.futures.Future, _LoadedContribution] = {}
+        now = time.time()
+        user = str((session or {}).get("user", ""))
+        for cid in list(dict.fromkeys(ids))[:_MAX_BATCH]:
+            lc = self.find_contribution(cid)
+            if lc is None or lc.meta.get("static") or not self._visible(lc, session):
+                result[cid] = {"ok": False, "error": "unavailable"}
+                continue
+            cached = lc.cache.get(user)
+            ttl = max(1.0, (lc.poll or 30) / 2.0)
+            if cached and now - cached[0] < ttl:
+                result[cid] = cached[1]
+                continue
+            if lc.errors >= 5 and now < lc.next_ok:
+                result[cid] = {"ok": False, "error": "backing off after repeated errors"}
+                continue
+            try:
+                futures[_get_pool().submit(self._run_provider, lc, session)] = lc
+            except RuntimeError:
+                result[cid] = {"ok": False, "error": "busy"}
+        if futures:
+            done, pending = concurrent.futures.wait(futures, timeout=_PROVIDER_BUDGET)
+            for fut in done:
+                lc = futures[fut]
+                try:
+                    data = fut.result()
+                    res = {"ok": True, "data": data}
+                    lc.errors = 0
+                    lc.cache[user] = (time.time(), res)
+                    if len(lc.cache) > 64:
+                        lc.cache.pop(next(iter(lc.cache)))
+                except contrib.ContribError as e:
+                    res = self._provider_failed(lc, "invalid payload: %s" % e)
+                except Exception:
+                    traceback.print_exc()
+                    res = self._provider_failed(lc, "provider failed — see server log")
+                result[lc.cid] = res
+            for fut in pending:
+                lc = futures[fut]
+                result[lc.cid] = self._provider_failed(lc, "provider timed out")
+        return {"rev": self._rev, "data": result, "toasts": toasts_since(since),
+                "toast_seq": toast_seq()}
+
+    @staticmethod
+    def _provider_failed(lc: _LoadedContribution, msg: str) -> dict:
+        lc.errors += 1
+        if lc.errors >= 5:
+            lc.next_ok = time.time() + min(300.0, (lc.poll or 10) * (2 ** (lc.errors - 5)))
+        return {"ok": False, "error": msg}
+
+    # ── Appearance (exclusive slots) ───────────────────────────────────────
+
+    def set_appearance(self, theme: Optional[str], layout: Optional[str]) -> Tuple[bool, str]:
+        """Pick the active theme / layout contribution ("" = none)."""
+        with self._state_lock:
+            st = self._load_state()
+            for key, val, slot in (("theme", theme, "theme"), ("layout", layout, "layout")):
+                if val is None:
+                    continue
+                if val == "":
+                    st["active"].pop(key, None)
+                    continue
+                lc = self.find_contribution(val)
+                if lc is None or lc.c.slot != slot or not lc.granted:
+                    return False, f"unknown {key}: {val}"
+                st["active"][key] = val
+            if not self._save_state():
+                return False, "could not write plugin_state.json"
+        self._bump()
+        return True, "ok"
+
+    # ── Config schema (Configure dialog) ───────────────────────────────────
+
+    def plugin_config_get(self, name: str) -> Tuple[Any, int]:
+        lp = self._plugins.get(name)
+        if lp is None:
+            return {"error": "Unknown plugin"}, 404
+        cfg = lp.ctx.get_config()
+        values: Dict[str, Any] = {}
+        for f in lp.config_schema:
+            v = cfg.get(f["name"], f.get("default"))
+            values[f["name"]] = ({"__set": bool(cfg.get(f["name"]))}
+                                 if f["secret"] else v)
+        return {"schema": lp.config_schema, "values": values,
+                "title": lp.plugin.name}, 200
+
+    def plugin_config_set(self, name: str, values: Any) -> Tuple[Any, int]:
+        lp = self._plugins.get(name)
+        if lp is None:
+            return {"error": "Unknown plugin"}, 404
+        if not lp.config_schema:
+            return {"error": "Plugin has no configuration schema"}, 400
+        cur = dict(lp.ctx.get_config())
+        new_vals, err = contrib.coerce_config_values(lp.config_schema, values, cur)
+        if err:
+            return {"error": err}, 400
+        merged = dict(cur)
+        merged.update(new_vals)
+        try:
+            lp.ctx._replace_config(merged)
+        except OSError:
+            return {"error": "could not write plugin config"}, 500
+        try:
+            lp.plugin.on_config_change(cur, dict(merged))
+        except Exception:
+            traceback.print_exc()
+        events.emit("config.changed", {"plugin": name})
+        self._bump()
+        return {"success": True, "message": "Configuration saved"}, 200
 
     # ── Static files ───────────────────────────────────────────────────────
 

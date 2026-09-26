@@ -57,17 +57,101 @@ class RouteDef:
 class TaskDef:
     """One background task exposed by a plugin.
 
-    The task function is launched in a daemon thread via
-    :meth:`PluginContext.run_task`.  Task names are namespaced
+    Since API v2 the manager starts every task with ``autostart=True``
+    through :meth:`PluginContext.run_task` (so ``fn`` finally runs).  With
+    ``interval > 0`` the function is repeated every ``interval`` seconds
+    until the plugin is unloaded.  Task names are namespaced
     ``plugin:<plugin_name>:<name>`` automatically — plugins never
     collide with core tasks (``boot_windows`` etc.).
     """
 
-    __slots__ = ("name", "fn")
+    __slots__ = ("name", "fn", "interval", "autostart")
 
-    def __init__(self, name: str, fn: Callable[[], None]):
+    def __init__(self, name: str, fn: Callable[[], None],
+                 interval: float = 0, autostart: bool = True):
         self.name = name
         self.fn = fn
+        self.interval = max(0.0, float(interval or 0))
+        self.autostart = bool(autostart)
+
+
+class Contribution:
+    """A piece of UI a plugin contributes to a named slot (API v2).
+
+    ``slot`` is one of :data:`pi_hub.plugins.contrib.SLOTS`.  For *dynamic*
+    slots ``provider(session=...)`` returns the payload: a
+    ``{key: node}`` dict for keyed slots (one node per host / service /
+    container id) or a single node for singleton slots.  For *static*
+    slots (``theme``, ``style``, ``layout``) ``static`` holds the payload
+    and there is no provider.
+
+    ``poll`` is the client refresh interval in seconds (clamped to
+    5-3600, ``0`` = fetch once).  ``order`` sorts additive slots.  ``caps``
+    restricts who sees it, with the same semantics as :class:`RouteDef`.
+    ``label`` / ``icon_svg`` are used by ``tab`` and ``settings.card``
+    (card title) and ``containers.column`` (column header).
+    """
+
+    __slots__ = ("slot", "id", "provider", "poll", "order", "caps",
+                 "label", "icon_svg", "static")
+
+    def __init__(
+        self,
+        slot: str,
+        id: str,
+        provider: Callable[..., Any] | None = None,
+        poll: int = 30,
+        order: int = 100,
+        caps: list[str] | None = None,
+        label: str = "",
+        icon_svg: str = "",
+        static: Any = None,
+    ):
+        self.slot = slot
+        self.id = id
+        self.provider = provider
+        self.poll = poll
+        self.order = order
+        self.caps = caps or []
+        self.label = label
+        self.icon_svg = icon_svg
+        self.static = static
+
+
+class FrameDef:
+    """A sandboxed JavaScript frame contributed by a plugin (needs the
+    ``ui.frame`` grant).  The plugin's JS/CSS live under
+    ``<plugin>/static/frame/`` and run in an opaque-origin iframe that only
+    talks to the dashboard through the validated ``ph`` bridge.
+
+    ``surfaces``: list of ``{"type": "tab"|"widget"|"settings", ...}``
+    (``tab``: ``label``/``icon_svg``; ``widget``: ``view``).
+    ``renders``: slots the frame may feed through ``ph.render``.
+    ``reads``: core read APIs it may call through ``ph.read``.
+    """
+
+    __slots__ = ("id", "entry", "css", "assets", "surfaces", "renders",
+                 "reads", "height")
+
+    def __init__(
+        self,
+        id: str,
+        entry: list[str],
+        css: list[str] | None = None,
+        assets: list[str] | None = None,
+        surfaces: list[dict] | None = None,
+        renders: list[str] | None = None,
+        reads: list[str] | None = None,
+        height: int = 240,
+    ):
+        self.id = id
+        self.entry = list(entry or [])
+        self.css = list(css or [])
+        self.assets = list(assets or [])
+        self.surfaces = list(surfaces or [])
+        self.renders = list(renders or [])
+        self.reads = list(reads or [])
+        self.height = height
 
 
 class TabUIDef:
@@ -164,7 +248,15 @@ class Plugin(abc.ABC):
     #: Minimum Pi Hub core version required (semver, e.g. ``"7.1.0"``).
     min_core_version: str = "7.1.0"
     #: Capability needs — list of strings, e.g. ``["proxmox.read", "ssh.execute"]``.
+    #: API v2: may also list ``ui.*`` grants (``ui.tab``, ``ui.slots``,
+    #: ``ui.header``, ``ui.settings``, ``ui.theme``, ``ui.style``,
+    #: ``ui.style.global``, ``ui.layout``, ``ui.frame``).  The admin approves
+    #: the whole list when enabling the plugin.
     capabilities: list[str] = []
+    #: Plugin API level this plugin was written for (1 or 2).
+    plugin_api_version: int = 1
+    #: Core events the plugin wants (see :mod:`pi_hub.plugins.events`).
+    events: list[str] = []
 
     def load(self, ctx: "PluginContext") -> None:
         """Called once when the plugin is loaded.  Set up state here."""
@@ -175,29 +267,57 @@ class Plugin(abc.ABC):
         pass
 
     def get_routes(self) -> list[RouteDef]:
-        """Return the plugin's HTTP routes."""
+        """Return the plugin's HTTP routes.  Paths may contain ``{param}``
+        segments; methods GET/POST/PUT/DELETE."""
         return []
 
     def get_tasks(self) -> list[TaskDef]:
-        """Return the plugin's background tasks."""
+        """Return the plugin's background tasks (started by the manager)."""
         return []
 
     def get_ui(self) -> list[Any]:
-        """Return TabUIDef / CardUIDef / ActionDef descriptors."""
+        """Return TabUIDef / CardUIDef / ActionDef descriptors (API v1)."""
+        return []
+
+    def get_contributions(self) -> list[Contribution]:
+        """API v2: UI contributions into standard tabs / header / settings /
+        theme / CSS / layout (see :class:`Contribution`)."""
+        return []
+
+    def get_frames(self) -> list[FrameDef]:
+        """API v2: sandboxed JS frames (needs ``ui.frame``)."""
+        return []
+
+    def get_config_schema(self) -> list[dict]:
+        """API v2: field schema for the Configure dialog in Settings →
+        Plugins.  Each field: ``{name, label, type (text|password|number|
+        checkbox|select), default, help, placeholder, required, secret,
+        min, max, options}``."""
         return []
 
     # ── Optional event hooks ────────────────────────────────────────────────
 
+    def on_event(self, name: str, payload: dict) -> None:
+        """API v2: called (on the event thread) for every event listed in
+        :attr:`events`."""
+        pass
+
+    def on_config_change(self, old: dict, new: dict) -> None:
+        """API v2: called after the admin saved the config through the
+        Configure dialog."""
+        pass
+
     def on_host_state_change(self, host_id: str, new_state: str) -> None:
-        """Reserved — NOT called by the core (see PLUGINS.md §6)."""
+        """Called on ``host.state`` when overridden (needs ``hosts.read``)."""
         pass
 
     def on_scan_complete(self, results: dict) -> None:
-        """Reserved — NOT called by the core (see PLUGINS.md §6)."""
+        """Called on ``scan.complete`` when overridden (needs ``services.read``)."""
         pass
 
     def migrate_config(self, old_version: str, config: dict) -> dict:
-        """Reserved — NOT called by the core (see PLUGINS.md §6)."""
+        """Called before :meth:`load` when the plugin version changed since
+        the last start.  Return the (possibly modified) config."""
         return config
 
 
@@ -314,6 +434,17 @@ class PluginContext:
         """Atomically persist the plugin's config to ``config.json``."""
         self._check_alive()
         self._save_config()
+
+    def _replace_config(self, new: dict) -> None:
+        """Manager-only: swap in a validated config and persist it."""
+        self._config.clear()
+        self._config.update(new)
+        self._save_config()
+
+    @property
+    def capabilities(self) -> frozenset:
+        """The capabilities actually granted to this plugin."""
+        return frozenset(self._caps)
 
     # ── System reads (capability-gated) ────────────────────────────────────
 
@@ -469,13 +600,29 @@ class PluginContext:
 
     # ── Background tasks ───────────────────────────────────────────────────
 
-    def run_task(self, name: str, fn: Callable[[], None]) -> None:
+    def run_task(self, name: str, fn: Callable[[], None],
+                 interval: float = 0) -> None:
         """Launch a background task in a daemon thread.  The thread is
         tracked so :meth:`Plugin.unload` can cancel it.  Task name is
-        namespaced to this plugin."""
+        namespaced to this plugin.  With ``interval > 0`` the function is
+        repeated every ``interval`` seconds until the plugin is unloaded."""
         self._check_alive()
         full_name = f"plugin:{self._plugin.name}:{name}"
-        t = _PluginThread(target=fn, name=full_name)
+        target = fn
+        if interval and interval > 0:
+            def target() -> None:                       # noqa: E306
+                cancel = thread_cancel()
+                while cancel is None or not cancel.is_set():
+                    try:
+                        fn()
+                    except Exception:
+                        import traceback
+                        traceback.print_exc()
+                    if cancel is None:
+                        time.sleep(interval)
+                    elif cancel.wait(interval):
+                        break
+        t = _PluginThread(target=target, name=full_name)
         self._threads.append(t)
         t.start()
 

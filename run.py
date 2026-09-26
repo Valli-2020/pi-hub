@@ -29,6 +29,8 @@ def main(argv: Optional[List[str]] = None) -> None:
                         help="listen port (default: 8898)")
     parser.add_argument("--dev", action="store_true",
                         help="re-read static files per request (dev mode)")
+    parser.add_argument("--safe-mode", action="store_true",
+                        help="start without loading any plugin (recovery)")
     parser.add_argument("--create-user", metavar="NAME", default=None,
                         help="create a user in users.json and exit (bootstrap/recovery)")
     parser.add_argument("--role", default=None, choices=["admin", "viewer"],
@@ -39,6 +41,9 @@ def main(argv: Optional[List[str]] = None) -> None:
                         version=f"Pi Hub {__version__}",
                         help="print the version and exit")
     args = parser.parse_args(argv)
+
+    if args.safe_mode:
+        os.environ["PIHUB_SAFE_MODE"] = "1"
 
     # S3: binding to 0.0.0.0 requires explicit --bind and warns
     if args.bind == "0.0.0.0":

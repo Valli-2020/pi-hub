@@ -342,6 +342,29 @@ class Handler(BaseHTTPRequestHandler):
 
         self._json({"error": "Not found"}, 404)
 
+    # ── PUT (plugin routes only, API v2) ──────────────────────────────────
+
+    def do_PUT(self) -> None:
+        parsed = urlparse(self.path)
+        path = parsed.path.rstrip("/")
+        params = parse_qs(parsed.query)
+
+        body = self._read_body()
+        if body is _BODY_REJECTED:
+            return
+
+        if path.startswith("/api/plugin/"):
+            session, err = self._guard("PUT", path)
+            if err:
+                self._json(*err)
+                return
+            data, code = routes.handle_put(path, params, body, session=session,
+                                           ip=self.client_address[0])
+            self._json(data, code)
+            return
+
+        self._json({"error": "Not found"}, 404)
+
     # ── DELETE (v6 — auth user management) ────────────────────────────────
 
     def do_DELETE(self) -> None:
