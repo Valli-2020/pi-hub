@@ -839,6 +839,7 @@ class PluginManager:
                 if lf.blocked:
                     continue
                 pub = lf.public()
+                pub["keyed"] = {sl: bool(contrib.SLOTS[sl].get("keyed")) for sl in pub["renders"]}
                 pub["surfaces"] = [sf for sf in pub["surfaces"]
                                    if not (sf["type"] == "settings" and role != "admin")]
                 if pub["surfaces"]:

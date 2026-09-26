@@ -1148,7 +1148,7 @@ def handle_post(path: str, params: Params, body: Dict[str, Any],
             len(parts) == 6 and parts[1] == "config" and parts[2] == "plugins"
             and parts[3] == "sources" and parts[5] == "scan") or (
             len(parts) == 5 and parts[1] == "config" and parts[2] == "plugins"
-            and parts[4] in ("enable", "disable", "config", "ui")):
+            and parts[4] in ("enable", "disable", "config", "ui", "approve")):
         _PLUGIN_STORE_MUTATING = True
     if _PLUGIN_STORE_MUTATING and (
             (not session) or session.get("user") == "local"):
@@ -1217,6 +1217,19 @@ def handle_post(path: str, params: Params, body: Dict[str, Any],
         if not ok:
             return {"error": msg}, 400
         return {"success": True, "message": "ok"}, 200
+
+    # POST /api/config/plugins/<name>/approve  {approve: [caps]}
+    # Re-approve a LOADED plugin, e.g. after its frame files changed without a
+    # version bump (the frame stays blocked until an admin looks again).
+    if len(parts) == 5 and parts[1] == "config" and parts[2] == "plugins" and parts[4] == "approve":
+        from pi_hub.plugins import get_manager
+        approve = body.get("approve") if isinstance(body, dict) else None
+        if not isinstance(approve, list):
+            return {"error": "approve: list of capabilities required"}, 400
+        ok, msg = get_manager().approve(parts[3], [str(c) for c in approve])
+        if not ok:
+            return {"error": msg}, 400
+        return {"success": True, "message": msg}, 200
 
     # POST /api/config/plugins/<name>/enable  |  /disable
     if len(parts) == 5 and parts[1] == "config" and parts[2] == "plugins" \

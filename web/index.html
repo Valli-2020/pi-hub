@@ -1339,6 +1339,7 @@ $('#theme').addEventListener('click', () => {
   const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
   document.documentElement.dataset.theme = next;
   try { localStorage.setItem('pihub-theme', next); } catch(e) {}
+  PHF.broadcastTheme();
 });
 
 /* ── Toast ─────────────────────────────────────────────────────────────── */
@@ -2023,6 +2024,9 @@ function renderPlugins(){
           : '<button class="btn btn-sm btn-primary" data-plg="enable" data-name="' + esc(name) + '">Enable</button>';
       }
       const apiTag = rec.loaded && p.api_version ? ' <span class="srcc">API v' + esc(p.api_version) + '</span>' : '';
+      const blocked = rec.loaded && (p.frames || []).filter(f => f.blocked);
+      if (blocked && blocked.length)
+        btns += '<button class="btn btn-sm btn-primary" data-plg="reapprove" data-name="' + esc(name) + '" data-caps="' + esc((p.capabilities || []).join(',')) + '">Review frame</button>';
       const denied = rec.loaded && (p.denied || []).length
         ? '<div class="hint" style="flex-basis:100%;margin:0">Not shown (missing grant): ' + esc(p.denied.join(', ')) + '</div>' : '';
       return '<div class="scanrow">' +
@@ -2030,7 +2034,8 @@ function renderPlugins(){
         '<strong>' + esc(name) + '</strong> ' +
         '<span class="meta">v' + esc(p.version || '?') + '</span>' + apiTag +
         '<span class="srcc">' + esc(label) +
-          (rec.loaded && p.last_error ? ' — ' + esc(p.last_error) : '') + '</span>' +
+          (rec.loaded && p.last_error ? ' — ' + esc(p.last_error) : '') +
+          (blocked && blocked.length ? ' — ' + esc(blocked[0].blocked) : '') + '</span>' +
         '<span class="btn-row" style="margin:0">' + btns +
         '<button class="btn btn-sm btn-bad" data-plg="uninstall" data-name="' + esc(name) + '">Uninstall</button>' +
         '</span>' + denied + '</div>';
@@ -2196,6 +2201,17 @@ $('#plugins-list').addEventListener('click', e => {
     return;
   }
   if (b.dataset.plg === 'configure'){ openPluginConfig(name); return; }
+  if (b.dataset.plg === 'reapprove'){
+    const caps = (b.dataset.caps || '').split(',').filter(Boolean);
+    confirmAction('Approve changed frame', name + '\'s frame files changed since you approved it (same version). It runs sandboxed JavaScript' +
+      (caps.length ? ' with: ' + caps.join(', ') : '') + '. Approve the new files?', async () => {
+      const d = await apiFetch('/api/config/plugins/' + encodeURIComponent(name) + '/approve', { method:'POST',
+        headers:{'Content-Type':'application/json'}, body: JSON.stringify({ approve: caps }) }).then(r => r.json()).catch(() => ({ error: 'Request failed' }));
+      toast(d.error || 'Frame approved', d.error ? 'err' : 'ok');
+      renderPlugins(); PH.refresh();
+    });
+    return;
+  }
   if (b.dataset.plg === 'ui-toggle'){
     b.disabled = true;
     apiFetch('/api/config/plugins/' + encodeURIComponent(name) + '/ui', { method:'POST',
@@ -2234,7 +2250,7 @@ const PH = (function(){
   const SAFE = /[?&]safe\b/.test(location.search);
   const st = { rev: 0, contribs: [], byslot: {}, data: {}, last: {}, seq: 0, styles: [],
                opts: null, acts: new Map(), lastPoll: 0, sig: '', booted: false,
-               busy: false, defaultView: '', safeSrv: false };
+               busy: false, defaultView: '', safeSrv: false, frames: [], virt: new Map() };
   const TONES = ['ok','warn','bad','muted','accent','info'];
   const STATE_MAP = { ok:'online', warn:'degraded', bad:'offline', off:'stopped', unknown:'pending' };
   const cls = p => String(p).replace(/[^A-Za-z0-9_-]/g, '-');
@@ -2456,10 +2472,57 @@ const PH = (function(){
     st.rev = m.rev; st.safeSrv = !!m.safe; st.opts = m.options || null;
     st.contribs = m.contribs || [];
     st.byslot = group(st.contribs);
-    st.data = Object.fromEntries(Object.entries(st.data).filter(([k]) => st.contribs.some(c => c.id === k)));
+    st.data = Object.fromEntries(Object.entries(st.data).filter(([k]) => st.virt.has(k) || st.contribs.some(c => c.id === k)));
+    st.frames = m.frames || [];
+    mergeVirtual();
     if (first) st.seq = m.toast_seq || 0;
     applyTheme(m.theme); applyStyles(m.styles); applyLayout(m.layout);
     if (m.safe) safeBanner('Safe mode is on — no plugins are loaded.');
+    PHF.sync(st.frames);
+  }
+
+  /* ── Frame-fed slots ─────────────────────────────────────────────────────
+     A sandboxed frame (PHF) can feed a slot through ph.render().  The node is
+     cleaned by PHF and rendered by the same escaping renderer as server
+     data; it lives here as a virtual contribution that only exists while the
+     frame is mounted. */
+  const virtId = (plugin, fid, slotName) => plugin + '/frame:' + fid + ':' + slotName;
+  function mergeVirtual(){
+    st.virt.forEach((v, id) => {
+      (st.byslot[v.c.slot] = st.byslot[v.c.slot] || []).push(v.c);
+      st.data[id] = { ok: true, data: v.keyed ? { keyed: true, nodes: Object.fromEntries(v.nodes) } : { node: v.node } };
+    });
+    Object.values(st.byslot).forEach(l => l.sort((a, b) => (a.order || 0) - (b.order || 0) || (a.id < b.id ? -1 : 1)));
+  }
+  function setVirtual(plugin, fid, slotName, keyed, key, node, label){
+    const id = virtId(plugin, fid, slotName);
+    let v = st.virt.get(id);
+    const hadSlot = has(slotName);
+    if (!v) {
+      if (node == null) return;
+      v = { keyed, nodes: new Map(), node: null,
+            c: { id, plugin, slot: slotName, keyed, poll: 0, order: 900, label: label || plugin, virtual: true } };
+      st.virt.set(id, v);
+      (st.byslot[slotName] = st.byslot[slotName] || []).push(v.c);
+    }
+    if (keyed) { if (node == null) v.nodes.delete(key); else v.nodes.set(key, node); }
+    else v.node = node;
+    st.data[id] = { ok: true, data: v.keyed ? { keyed: true, nodes: Object.fromEntries(v.nodes) } : { node: v.node } };
+    if (!hadSlot) rerenderCore();     // core views only emit a placeholder once a slot has a contributor
+    paint(document);
+  }
+  function dropVirtual(plugin, fid){
+    let n = 0;
+    [...st.virt.keys()].forEach(id => {
+      const v = st.virt.get(id);
+      if (v.c.plugin === plugin && id.startsWith(plugin + '/frame:' + fid + ':')) {
+        st.virt.delete(id); delete st.data[id];
+        const l = st.byslot[v.c.slot];
+        if (l) { st.byslot[v.c.slot] = l.filter(c => c.id !== id); if (!st.byslot[v.c.slot].length) delete st.byslot[v.c.slot]; }
+        n++;
+      }
+    });
+    if (n) { rerenderCore(); paint(document); }
   }
   function safeBanner(msg){
     if ($('.ph-safe')) return;
@@ -2531,11 +2594,12 @@ const PH = (function(){
     if (SAFE || st.booted) return;
     st.booted = true;
     renderTabs();
+    PHF.sync(st.frames);
     paint(document);
     tick(true);
     setInterval(() => tick(false), 5000);
   }
-  function onView(v){ if (!SAFE && st.booted) { paint(document); tick(false); } }
+  function onView(v){ if (!SAFE && st.booted) { paint(document); tick(false); } PHF.onView(v); }
 
   /* ── Actions ─────────────────────────────────────────────────────────── */
   function runAction(a, b){
@@ -2594,8 +2658,387 @@ const PH = (function(){
   // by inline badges); the row hides itself while empty.
   const badgeRow = (name, key) => has(name) ? '<div class="ph-badges">' + slot(name, key) + '</div>' : '';
   return { boot, afterBoot, refresh, paint, slot, badgeRow, has, cols, colSig, paintCtHead, onView, tick,
+           rnode, setVirtual, dropVirtual, okHref, okAction, rerenderCore,
            get safe(){ return SAFE; }, get defaultView(){ return st.defaultView; },
            get opts(){ return st.opts; }, renderAppearance, _st: st };
+})();
+
+/* ══ Plugin frames (8.0) — the dashboard side of the sandbox ════════════════
+   A frame is an opaque-origin iframe (sandbox="allow-scripts", no
+   allow-same-origin) that talks to us over a private MessageChannel.  We
+   never listen for window 'message' events; the frame cannot read our
+   localStorage/cookies, cannot fetch, and never sees a token.  Everything it
+   asks for is validated here, rate-limited, and — independently — enforced by
+   the server through the scoped `Authorization: Frame` token.
+   ?noframes=1 disables all frames; ?safe=1 disables all plugin UI. */
+const PHF = (function(){
+  const NOFRAMES = PH.safe || /[?&]noframes\b/.test(location.search);
+  const READ = { 'hosts.status': '/api/hosts/status', 'services.status': '/api/status',
+                 'proxmox.containers': '/api/proxmox/containers', 'dockge.stacks': '/api/dockge/stacks' };
+  const ROUTE_RE = /^[A-Za-z0-9._:~-]{1,128}(\/[A-Za-z0-9._:~-]{1,128}){0,8}(\?[A-Za-z0-9._~=&%:+,-]{0,400})?$/;
+  const KEY_RE = /^[A-Za-z0-9._:@ \/()+-]{1,128}$/;
+  const METHODS = ['GET', 'POST', 'PUT', 'DELETE'];
+  const TONES = ['ok','warn','bad','muted','accent','info'];
+  const TOKENS = ['--bg','--surface','--surface-2','--border','--border-strong','--text','--muted','--faint','--accent',
+                  '--accent-hover','--accent-ink','--ok','--ok-ink','--warn','--bad','--bad-ink','--radius','--radius-sm','--shadow'];
+  const MAX_BODY = 65536, MAX_NODE_JSON = 32768, MAX_NODES = 500, MAX_DEPTH = 6, MAX_STR = 500;
+  const HIDDEN_UNMOUNT_MS = 5 * 60 * 1000, PING_MS = 5000, HEALTHY_MS = 10000;
+  const insts = new Map();
+  let timer = 0;
+
+  /* ── Message validation ──────────────────────────────────────────────── */
+  const isObj = v => v !== null && typeof v === 'object' && !Array.isArray(v) && Object.getPrototypeOf(v) === Object.prototype;
+  const str = (v, n) => typeof v === 'string' ? v.slice(0, n || MAX_STR) : (typeof v === 'number' && isFinite(v) ? String(v) : '');
+  const tone = t => TONES.includes(t) ? t : '';
+
+  // A fresh copy of a node with only the fields the renderer knows about.
+  // The renderer escapes everything again; this bounds size/shape first.
+  function cleanNode(n, depth, ctr, inline){
+    if (!isObj(n) || depth > MAX_DEPTH || ++ctr.n > MAX_NODES) throw new Error('bad node');
+    const kids = list => { if (!Array.isArray(list) || list.length > 100) throw new Error('bad children'); return list.map(c => cleanNode(c, depth + 1, ctr, false)); };
+    switch (n.type) {
+      case 'text':   return { type: 'text', text: str(n.text), mono: !!n.mono, tone: tone(n.tone) };
+      case 'badge':  return { type: 'badge', text: str(n.text, 60), tone: tone(n.tone) || 'muted', title: str(n.title, 200) };
+      case 'status': return { type: 'status', state: ['ok','warn','bad','off','unknown'].includes(n.state) ? n.state : 'unknown', text: str(n.text, 80) };
+      case 'stat':   return { type: 'stat', value: str(n.value, 40), unit: str(n.unit, 12), label: str(n.label, 60), tone: tone(n.tone) };
+      case 'gauge': case 'progress': {
+        const pct = Number(n.pct);
+        if (!isFinite(pct)) throw new Error('bad pct');
+        return { type: 'gauge', label: str(n.label, 60), pct: Math.max(0, Math.min(100, pct)), text: str(n.text, 40) };
+      }
+      case 'empty':  return { type: 'empty', title: str(n.title, 120), text: str(n.text) };
+      case 'link': {
+        if (!PH.okHref(n.href)) throw new Error('bad href');
+        return { type: 'link', text: str(n.text, 120), href: n.href };
+      }
+      case 'button': {
+        if (!PH.okAction(n.action)) throw new Error('bad action');
+        const fields = Array.isArray(n.fields) ? n.fields.slice(0, 12).map(f => {
+          if (!isObj(f) || !/^[A-Za-z_][A-Za-z0-9_]{0,31}$/.test(f.name || '')) throw new Error('bad field');
+          return { name: f.name, label: str(f.label, 80), type: ['text','password','number','checkbox','select'].includes(f.type) ? f.type : 'text',
+                   options: Array.isArray(f.options) ? f.options.slice(0, 50).map(o => str(o, 80)) : [],
+                   default: f.default == null ? '' : (typeof f.default === 'boolean' || typeof f.default === 'number' ? f.default : str(f.default, 200)),
+                   required: !!f.required, placeholder: str(f.placeholder, 120) };
+        }) : [];
+        return { type: 'button', label: str(n.label, 60), action: n.action, method: METHODS.includes(n.method) ? n.method : 'POST',
+                 confirm: str(n.confirm, 200), style: ['primary','ok','bad','quiet'].includes(n.style) ? n.style : 'quiet',
+                 caps: Array.isArray(n.caps) ? n.caps.filter(c => c === 'admin').slice(0, 1) : [], fields };
+      }
+      case 'kv': {
+        if (!Array.isArray(n.rows) || n.rows.length > 100) throw new Error('bad rows');
+        return { type: 'kv', rows: n.rows.map(r => {
+          if (!Array.isArray(r) || r.length !== 2) throw new Error('bad kv row');
+          return [str(r[0], 80), cleanCell(r[1], depth + 1, ctr)];
+        }) };
+      }
+      case 'stack':   return { type: 'stack', dir: n.dir === 'row' ? 'row' : 'col', children: kids(n.children) };
+      case 'columns': return { type: 'columns', children: kids(n.children) };
+      case 'section': return { type: 'section', title: str(n.title, 120), children: kids(n.children) };
+      case 'table': {
+        if (inline) throw new Error('table not allowed here');
+        const cols = Array.isArray(n.columns) ? n.columns : [], rows = Array.isArray(n.rows) ? n.rows : [];
+        if (!cols.length || cols.length > 12 || rows.length > 500) throw new Error('bad table');
+        const columns = cols.map(c => {
+          if (!isObj(c) || !/^[A-Za-z_][A-Za-z0-9_]{0,31}$/.test(c.key || '')) throw new Error('bad column');
+          return { key: c.key, label: str(c.label || c.key, 60), mono: !!c.mono, align: c.align === 'right' ? 'right' : 'left' };
+        });
+        const acts = Array.isArray(n.row_actions) ? n.row_actions.slice(0, 4).map(a => cleanNode(a, depth + 1, ctr, true)) : [];
+        if (acts.some(a => a.type !== 'button')) throw new Error('row_actions must be buttons');
+        return { type: 'table', columns, row_actions: acts, rows: rows.map(r => {
+          if (!isObj(r)) throw new Error('bad row');
+          const o = { _id: r._id == null ? null : str(r._id, 128) };
+          columns.forEach(c => { o[c.key] = cleanCell(r[c.key], depth + 1, ctr); });
+          return o;
+        }) };
+      }
+      default: throw new Error('unknown node type');
+    }
+  }
+  function cleanCell(v, depth, ctr){
+    if (isObj(v)) { const c = cleanNode(v, depth, ctr, true); if (c.type === 'table') throw new Error('nested table'); return c; }
+    if (typeof v === 'boolean') return v;
+    if (v == null) return '';
+    return str(v);
+  }
+  function cleanRender(inst, m){
+    if (typeof m.slot !== 'string' || !inst.spec.renders.includes(m.slot)) throw new Error('slot not allowed');
+    const keyed = !!(inst.spec.keyed || {})[m.slot];
+    let key = null;
+    if (keyed) { if (typeof m.key !== 'string' || !KEY_RE.test(m.key)) throw new Error('bad key'); key = m.key; }
+    else if (m.key != null) throw new Error('slot takes no key');
+    if (m.node === null) return { slot: m.slot, keyed, key, node: null };
+    let json = '';
+    try { json = JSON.stringify(m.node); } catch (e) { throw new Error('not serialisable'); }
+    if (json.length > MAX_NODE_JSON) throw new Error('node too large');
+    const node = cleanNode(m.node, 0, { n: 0 }, false);
+    return { slot: m.slot, keyed, key, node };
+  }
+
+  /* ── Rate limiting / misbehaviour ────────────────────────────────────── */
+  function bucket(rate, burst){
+    let tokens = burst, last = performance.now();
+    return () => { const t = performance.now(); tokens = Math.min(burst, tokens + (t - last) / 1000 * rate); last = t;
+                   if (tokens >= 1) { tokens -= 1; return true; } return false; };
+  }
+  function violate(inst, why){
+    const now = Date.now();
+    inst.viol = (inst.viol || []).filter(t => now - t < 60000); inst.viol.push(now);
+    if (inst.viol.length >= 3) kill(inst, 'The frame misbehaved (' + why + ') and was stopped.');
+  }
+
+  /* ── Crash marker: a frame that froze the tab is not mounted forever ─── */
+  const CRASH = 'phf-crash';
+  const crashes = () => { try { return JSON.parse(sessionStorage.getItem(CRASH) || '{}') || {}; } catch (e) { return {}; } };
+  const setCrashes = c => { try { sessionStorage.setItem(CRASH, JSON.stringify(c)); } catch (e) {} };
+
+  /* ── Theme ───────────────────────────────────────────────────────────── */
+  const mode = () => document.documentElement.dataset.theme === 'light' ? 'light' : 'dark';
+  function themeSnapshot(){
+    const cs = getComputedStyle(document.documentElement), vars = {};
+    TOKENS.forEach(t => { const v = cs.getPropertyValue(t).trim(); if (v) vars[t] = v; });
+    return { mode: mode(), vars };
+  }
+  function broadcastTheme(){
+    insts.forEach(i => { if (i.iframe) i.iframe.style.colorScheme = mode(); post(i, { op: 'theme', theme: themeSnapshot() }); });
+  }
+  const post = (inst, m) => { if (inst.port) { try { inst.port.postMessage(m); } catch (e) {} } };
+
+  /* ── Requests made on the frame's behalf ─────────────────────────────── */
+  async function frameFetch(inst, path, method, body){
+    const go = () => fetch(path, { method, cache: 'no-store', credentials: 'omit', referrerPolicy: 'no-referrer',
+      headers: Object.assign({ 'Authorization': 'Frame ' + inst.token }, body !== undefined ? { 'Content-Type': 'application/json' } : {}),
+      body: body !== undefined ? JSON.stringify(body) : undefined });
+    let r = await go();
+    if (r.status === 401 && await renewToken(inst)) r = await go();   // token expired: get a fresh one once
+    const txt = await r.text();
+    if (txt.length > 2e6) throw new Error('response too large');
+    let data = null; try { data = JSON.parse(txt); } catch (e) {}
+    return { ok: r.ok, status: r.status, data, error: r.ok ? '' : ((data && data.error) || 'HTTP ' + r.status) };
+  }
+  async function renewToken(inst){
+    try {
+      const r = await apiFetch('/api/plugins/frames/ticket', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                               body: JSON.stringify({ plugin: inst.plugin, frame: inst.fid }) });
+      const j = await r.json();
+      if (r.status === 200 && j.frame_token) { inst.token = j.frame_token; return true; }
+    } catch (e) {}
+    return false;
+  }
+  async function handleCall(inst, m, read){
+    const reply = (o) => post(inst, Object.assign({ op: 'result', id: m.id }, o));
+    let path, method = 'GET', body;
+    if (read) {
+      if (typeof m.name !== 'string' || !(inst.spec.reads || []).includes(m.name) || !READ[m.name]) return reply({ ok: false, status: 403, error: 'read not allowed' });
+      path = READ[m.name];
+    } else {
+      if (typeof m.route !== 'string' || !ROUTE_RE.test(m.route) || m.route.split('?')[0].split('/').some(p => p === '.' || p === '..'))
+        return reply({ ok: false, status: 400, error: 'bad route' });
+      method = m.method === undefined ? 'GET' : m.method;
+      if (!METHODS.includes(method)) return reply({ ok: false, status: 400, error: 'bad method' });
+      if (m.body != null && method !== 'GET' && method !== 'DELETE') {
+        try { if (JSON.stringify(m.body).length > MAX_BODY) return reply({ ok: false, status: 413, error: 'body too large' }); }
+        catch (e) { return reply({ ok: false, status: 400, error: 'body not serialisable' }); }
+        body = m.body;
+      }
+      path = '/api/plugin/' + encodeURIComponent(inst.plugin) + '/' + m.route;
+    }
+    inst.inflight++;
+    try { reply(await frameFetch(inst, path, method, body)); }
+    catch (e) { reply({ ok: false, status: 0, error: 'request failed' }); }
+    finally { inst.inflight--; }
+  }
+
+  function onMessage(inst, m){
+    if (!inst.iframe) return;
+    if (!isObj(m) || typeof m.op !== 'string') return violate(inst, 'malformed message');
+    switch (m.op) {
+      case 'ready':
+        inst.ready = true; post(inst, { op: 'visible', visible: inst.visible });
+        return;
+      case 'pong':
+        inst.missed = 0;
+        if (Date.now() - inst.mountedAt > HEALTHY_MS) { const c = crashes(); if (c[inst.key]) { delete c[inst.key]; setCrashes(c); } }
+        return;
+      case 'resize': {
+        const h = Number(m.h);
+        if (!isFinite(h)) return violate(inst, 'bad resize');
+        const max = inst.type === 'tab' ? 4000 : 1200, v = Math.max(40, Math.min(max, Math.round(h)));
+        if (Math.abs(v - (inst.h || 0)) > 1) { inst.h = v; inst.iframe.style.height = v + 'px'; }
+        return;
+      }
+      case 'toast': {
+        if (!inst.toastOk()) return;
+        const msg = str(m.msg, 200); if (!msg) return;
+        toast(inst.plugin + ': ' + msg, m.kind === 'err' ? 'err' : m.kind === 'ok' ? 'ok' : 'info');
+        return;
+      }
+      case 'render': {
+        if (!inst.renderOk(m.slot)) return violate(inst, 'render flood');
+        let r;
+        try { r = cleanRender(inst, m); } catch (e) { return violate(inst, e.message); }
+        PH.setVirtual(inst.plugin, inst.fid, r.slot, r.keyed, r.key, r.node, inst.label);
+        return;
+      }
+      case 'call': case 'read': {
+        if (!Number.isInteger(m.id) || m.id < 1) return violate(inst, 'bad id');
+        if (!inst.callOk()) { post(inst, { op: 'result', id: m.id, ok: false, status: 429, error: 'rate limited' }); return violate(inst, 'call flood'); }
+        if (inst.inflight >= 4) { post(inst, { op: 'result', id: m.id, ok: false, status: 429, error: 'too many requests in flight' }); return violate(inst, 'too many in flight'); }
+        handleCall(inst, m, m.op === 'read');
+        return;
+      }
+      default: return violate(inst, 'unknown op');
+    }
+  }
+
+  /* ── Mount / unmount ─────────────────────────────────────────────────── */
+  function fail(inst, msg){
+    inst.failed = true;               // stays down until the user presses Retry (a view refresh must not remount it)
+    const mnt = inst.box.querySelector('.phf-mount');
+    if (mnt) mnt.innerHTML = '<div class="plg-frame-err">' + esc(msg) + ' <button class="btn btn-sm btn-quiet" data-phf-retry="' + esc(inst.key) + '">Retry</button></div>';
+  }
+  function unmount(inst){
+    if (inst.port) { try { inst.port.onmessage = null; inst.port.close(); } catch (e) {} inst.port = null; }
+    if (inst.iframe) { inst.iframe.remove(); inst.iframe = null; }
+    inst.token = ''; inst.ready = false; inst.mounting = false;
+    PH.dropVirtual(inst.plugin, inst.fid);
+    const mnt = inst.box.querySelector('.phf-mount'); if (mnt) mnt.innerHTML = '';
+  }
+  function kill(inst, msg){ unmount(inst); fail(inst, msg); }
+
+  async function mount(inst){
+    if (NOFRAMES || inst.iframe || inst.mounting) return;
+    inst.failed = false;
+    const c = crashes();
+    if ((c[inst.key] || 0) >= 3) { fail(inst, 'Stopped after repeated crashes in this tab. Reload with ?noframes=1 to skip plugin frames.'); return; }
+    c[inst.key] = (c[inst.key] || 0) + 1; setCrashes(c);
+    inst.mounting = true;
+    let status = 0, j = {};
+    try {
+      const r = await apiFetch('/api/plugins/frames/ticket', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                               body: JSON.stringify({ plugin: inst.plugin, frame: inst.fid }) });
+      status = r.status; j = await r.json().catch(() => ({}));
+    } catch (e) { inst.mounting = false; return; }
+    if (status !== 200 || !j.url || !j.frame_token) { inst.mounting = false; const cc = crashes(); delete cc[inst.key]; setCrashes(cc); fail(inst, j.error || 'Could not open the frame.'); return; }
+    if (!inst.visible && inst.hiddenSince && Date.now() - inst.hiddenSince > HIDDEN_UNMOUNT_MS) { inst.mounting = false; return; }
+    inst.token = j.frame_token;
+    const f = document.createElement('iframe');
+    f.className = 'plg-frame';
+    f.setAttribute('sandbox', 'allow-scripts');         // opaque origin: no allow-same-origin, -forms, -popups, -top-navigation
+    f.setAttribute('allow', '');
+    f.setAttribute('referrerpolicy', 'no-referrer');
+    f.setAttribute('title', inst.label);
+    f.style.height = (inst.h = inst.spec.height) + 'px';
+    f.style.colorScheme = mode();
+    f.addEventListener('load', () => {
+      if (inst.iframe !== f) return;
+      const ch = new MessageChannel();
+      inst.port = ch.port1;
+      ch.port1.onmessage = ev => onMessage(inst, ev.data);
+      inst.mountedAt = Date.now(); inst.missed = 0;
+      f.contentWindow.postMessage({ ph: 'init', theme: themeSnapshot(), role: (window.USER && window.USER.role) || 'viewer', surface: inst.type }, '*', [ch.port2]);
+    }, { once: true });
+    inst.iframe = f;
+    f.src = j.url;
+    inst.box.querySelector('.phf-mount').appendChild(f);
+    inst.mounting = false;
+    if (!timer) timer = setInterval(sweep, PING_MS);
+  }
+
+  function sweep(){
+    const now = Date.now();
+    insts.forEach(inst => {
+      if (!inst.iframe) return;
+      if (inst.port) {
+        if (inst.missed >= 3) return kill(inst, 'The frame stopped responding and was removed.');
+        inst.missed++;
+        post(inst, { op: 'ping', n: now });
+      } else if (now - (inst.mountedAt || now) > 20000 && !inst.port) {
+        // never received the load event / init: something is wrong
+        return kill(inst, 'The frame did not start.');
+      }
+      if (!inst.visible && inst.hiddenSince && now - inst.hiddenSince > HIDDEN_UNMOUNT_MS) unmount(inst);
+    });
+  }
+
+  /* ── Surfaces ────────────────────────────────────────────────────────── */
+  const surfKey = (fr, sf) => fr.plugin + '/' + fr.id + '/' + sf.type;
+  const tabId = (fr) => 'phf-' + (fr.plugin + '--' + fr.id).replace(/[^A-Za-z0-9_-]/g, '-');
+  const MOUNT_HTML = '<div class="plg-frame-box"><div class="phf-mount"></div></div>';
+
+  function create(fr, sf){
+    const inst = { key: surfKey(fr, sf), plugin: fr.plugin, fid: fr.id, type: sf.type, spec: fr, label: sf.label || fr.plugin,
+                   view: '', box: null, iframe: null, port: null, token: '', visible: false, hiddenSince: 0, viol: [], missed: 0,
+                   inflight: 0, mounting: false, ready: false, mountedAt: 0,
+                   callOk: bucket(10, 20), toastOk: bucket(0.2, 1), renders: new Map() };
+    inst.renderOk = slot => { let b = inst.renders.get(slot); if (!b) inst.renders.set(slot, b = bucket(5, 10)); return b(); };
+    if (sf.type === 'tab') {
+      const vid = tabId(fr); inst.view = vid;
+      const btn = document.createElement('button');
+      btn.className = 'nav-item'; btn.dataset.phfTab = vid; btn.dataset.go = vid;
+      btn.innerHTML = (sanitizeSvg(sf.icon_svg) ||
+        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M4 17 10 11 14 15 20 9"/><path d="M4 21h16"/></svg>') +
+        '<span>' + esc(inst.label) + '</span>';
+      $('#sidebar').insertBefore(btn, $('#sidebar .navhint'));
+      const sec = document.createElement('section');
+      sec.className = 'view plg-' + fr.plugin.replace(/[^A-Za-z0-9_-]/g, '-'); sec.dataset.view = vid; sec.hidden = S.view !== vid;
+      sec.innerHTML = '<div class="viewhead"><h2>' + esc(inst.label) + '</h2></div>' + MOUNT_HTML;
+      $('main').appendChild(sec);
+      inst.box = sec; inst.nav = btn;
+    } else if (sf.type === 'widget') {
+      inst.view = sf.view;
+      const anchor = $('.ph-slot[data-slot="' + sf.view + '.top"]');
+      if (!anchor) return null;
+      const div = document.createElement('div');
+      div.className = 'phf-widget'; div.style.marginBottom = '14px'; div.innerHTML = MOUNT_HTML;
+      anchor.after(div); inst.box = div;
+    } else {
+      inst.view = 'settings';
+      const anchor = $('.ph-slot[data-slot="settings.card"]');
+      if (!anchor) return null;
+      const div = document.createElement('div');
+      div.className = 'setcard'; div.innerHTML = '<h3 class="group">' + esc(inst.label) + '</h3>' + MOUNT_HTML;
+      anchor.parentNode.insertBefore(div, anchor); inst.box = div;
+    }
+    insts.set(inst.key, inst);
+    return inst;
+  }
+  function destroy(inst){
+    unmount(inst);
+    if (inst.nav) inst.nav.remove();
+    if (inst.box) inst.box.remove();
+    if (S.view === inst.view) showView('hosts');
+    insts.delete(inst.key);
+  }
+  function sync(list){
+    if (NOFRAMES) return;
+    const want = new Map();
+    (list || []).forEach(fr => (fr.surfaces || []).forEach(sf => want.set(surfKey(fr, sf), { fr, sf })));
+    [...insts.values()].forEach(inst => { if (!want.has(inst.key)) destroy(inst); });
+    want.forEach((w, k) => { const inst = insts.get(k); if (inst) inst.spec = w.fr; else create(w.fr, w.sf); });
+    onView(S.view);
+  }
+  function onView(v){
+    if (NOFRAMES) return;
+    const now = Date.now();
+    insts.forEach(inst => {
+      const vis = inst.view === v;
+      if (vis === inst.visible && (vis ? inst.iframe || inst.mounting || inst.failed : true)) return;
+      inst.visible = vis;
+      if (vis) { inst.hiddenSince = 0; if (!inst.iframe) { if (!inst.failed) mount(inst); } else post(inst, { op: 'visible', visible: true }); }
+      else { inst.hiddenSince = now; post(inst, { op: 'visible', visible: false }); }
+    });
+  }
+  document.addEventListener('click', e => {
+    const b = e.target.closest('button[data-phf-retry]');
+    if (!b) return;
+    const inst = insts.get(b.dataset.phfRetry);
+    if (!inst) return;
+    const c = crashes(); delete c[inst.key]; setCrashes(c);
+    unmount(inst); mount(inst);
+  });
+
+  return { sync, onView, broadcastTheme, _cleanNode: cleanNode, _cleanRender: cleanRender, _insts: insts,
+           _create: create, _onMessage: onMessage };
 })();
 
 /* ── Permission descriptions (consent dialog) ──────────────────────────── */

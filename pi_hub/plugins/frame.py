@@ -226,6 +226,7 @@ def load_frame(plugin: str, plugin_dir: str, fd: Any, granted: set,
 BASE_CSS = """\
 *,*::before,*::after{box-sizing:border-box}
 html,body{margin:0;padding:0;background:transparent}
+body{display:flow-root}
 body{font:13.5px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:var(--text,#1c1d21)}
 a{color:var(--accent,#b45309)}
 """
@@ -234,20 +235,26 @@ a{color:var(--accent,#b45309)}
 # window.parent; the plugin's own scripts get the frozen `ph` object.
 BRIDGE_JS = r"""(function(){
 'use strict';
-var TOP = window.parent, port = null, seq = 0, pending = Object.create(null);
+var TOP = window.parent, port = null, seq = 0, pending = Object.create(null), outbox = [];
 var listeners = { theme: [], visible: [], refresh: [] };
 var assets = {};
 try { assets = JSON.parse(document.getElementById('ph-assets').textContent || '{}'); } catch (e) {}
-var state = { theme: { mode: 'light', vars: {} }, role: '', visible: true };
+var state = { theme: { mode: 'light', vars: {} }, role: '', surface: '', visible: true };
 
-function send(m){ if (port) { try { port.postMessage(m); } catch (e) {} } }
+// Messages sent before the dashboard's init arrives (scripts run before the
+// iframe's load event) are queued and flushed once the channel is up.
+function send(m){
+  if (port) { try { port.postMessage(m); } catch (e) {} }
+  else if (outbox.length < 100) outbox.push(m);
+}
 function fire(name, arg){ (listeners[name] || []).slice().forEach(function(f){ try { f(arg); } catch (e) {} }); }
 function applyTheme(t){
   if (!t || typeof t !== 'object') return;
   var mode = t.mode === 'dark' ? 'dark' : 'light', vars = {};
   document.documentElement.setAttribute('data-theme', mode);
+  document.documentElement.style.colorScheme = mode;
   Object.keys(t.vars || {}).forEach(function(k){
-    if (/^--[a-z0-9-]{1,32}$/.test(k) && typeof t.vars[k] === 'string' && t.vars[k].length < 120) {
+    if (/^--[a-z0-9-]{1,32}$/.test(k) && typeof t.vars[k] === 'string' && t.vars[k].length < 300) {
       vars[k] = t.vars[k]; document.documentElement.style.setProperty(k, t.vars[k]);
     }
   });
@@ -255,7 +262,6 @@ function applyTheme(t){
 }
 function request(op, payload){
   return new Promise(function(resolve, reject){
-    if (!port) { reject(new Error('bridge not ready')); return; }
     var id = ++seq;
     pending[id] = { resolve: resolve, reject: reject };
     payload.op = op; payload.id = id;
@@ -283,15 +289,18 @@ window.addEventListener('message', function first(ev){
   port = ev.ports[0];
   port.onmessage = onPort;
   state.role = ev.data.role === 'admin' ? 'admin' : 'viewer';
+  state.surface = /^(tab|widget|settings)$/.test(ev.data.surface) ? ev.data.surface : '';
   applyTheme(ev.data.theme);
   if (window.ResizeObserver) {
     var last = 0;
     new ResizeObserver(function(){
-      var h = Math.ceil(document.documentElement.scrollHeight);
+      var h = Math.ceil(document.body.getBoundingClientRect().height);
       if (h !== last) { last = h; send({ op: 'resize', h: h }); }
-    }).observe(document.documentElement);
+    }).observe(document.body);
   }
   send({ op: 'ready' });
+  var queued = outbox; outbox = [];
+  queued.forEach(send);
   fire('theme', state.theme);
 });
 var ph = {
@@ -307,6 +316,7 @@ var ph = {
   asset: function(path){ return Object.prototype.hasOwnProperty.call(assets, path) ? assets[path] : null; },
   get theme(){ return state.theme; },
   get user(){ return { role: state.role }; },
+  get surface(){ return state.surface; },
   get visible(){ return state.visible; }
 };
 Object.freeze(ph);
