@@ -9,8 +9,10 @@ service discovery, plugin system, and self-update.
 - **Flat dark theme** (shadcn new-york slate tokens, 8px radius)
 - **Self-updating** — checks GitHub releases, installs with verified
   atomic swap (Settings → Update)
-- **Plugin system + store** — install plugins from GitHub repos (see
-  PLUGINS.md)
+- **Plugin system + store** — plugins can add tabs, change the standard
+  tabs (badges, columns, buttons, banners), the header, theme, CSS and
+  layout, and run sandboxed JavaScript; installed from GitHub repos with an
+  approval step (see PLUGINS.md)
 
 ## Features
 
@@ -23,7 +25,8 @@ service discovery, plugin system, and self-update.
 | Proxmox containers (multi-instance) | `/api/proxmox/containers` | GET |
 | Container actions | `/api/proxmox/container/<id>/<action>` | POST |
 | Update status / check / apply | `/api/update/status\|check\|apply` | GET/POST |
-| Plugin list | `/api/plugins/list` | GET |
+| Plugin list / UI manifest / contribution data | `/api/plugins/list\|ui\|contrib` | GET |
+| Plugin frame ticket | `/api/plugins/frames/ticket` | POST |
 | Plugin store (sources, scan, install) | `/api/config/plugins/...` | admin |
 | Auth (users, sessions) | `/api/auth/...` | POST |
 
@@ -110,12 +113,21 @@ dependency, a plugin failure can never break the update path.
 
 ## Plugins
 
-Plugins extend the hub: API routes (`/api/plugin/<name>/...`), UI tabs
-and cards, background tasks, event hooks. They are installed from GitHub
+Plugins extend the hub: API routes (`/api/plugin/<name>/...`), background
+tasks, events, and UI — a new tab, badges/columns/buttons inside the
+standard tabs, header pills, Settings cards, themes, CSS, layout, and
+sandboxed JavaScript frames (Plugin API v2). They are installed from GitHub
 repos via Settings → Plugins (store): add a repo as source, scan its
-releases for `pihub-plugin.json` manifests, install with one click.
+releases for `pihub-plugin.json` manifests, install with one click, then
+approve what the plugin asks for.
 
 - Manifest `plugins.json` is deny-by-default — only listed plugins load
+- **Consent first:** the admin approves a plugin's declared capabilities
+  before any of its code is imported (`pi_hub_plugins/plugin_state.json`)
+- Plugins cannot inject HTML or script into the dashboard: UI is declared
+  as JSON nodes; own JavaScript runs only in an opaque-origin iframe
+- The dashboard is served with a hash-pinned Content-Security-Policy
+- Plugin Python still runs in-process — install only plugins you trust
 - Plugin names reject `.`/`..`; extraction is allowlist-only with a
   compile gate
 - Plugin store routes require a real admin session even when auth is
@@ -150,7 +162,7 @@ pi_hub/tasks.py     background boot sequences + task status
 pi_hub/config.py    config.json loading (atomic saves)
 pi_hub/auth.py      users, sessions, capability matrix, classify
 pi_hub/updater.py   self-update: check/apply (verified atomic swap)
-pi_hub/plugins/     plugin manager + store (manager.py, store.py)
+pi_hub/plugins/     plugin manager, store, contributions, events, frames
 pi_hub_plugins/     user-space plugin directory (gitignored)
 web/index.html      single-file dark-theme dashboard (vanilla JS)
 ```
@@ -176,6 +188,8 @@ Browser → ThreadingHTTPServer (:8898)
 | Windows SSH times out | `Set-Service sshd -StartupType Automatic` + firewall rule |
 | Proxmox table empty | Check token in `secrets.json` and `enabled: true` on the instance |
 | Update fails | Check Settings → Update card for the error; backups in `.pi-hub-backups/` |
+| A plugin broke the UI | Open `/?safe=1` (no plugin UI), then Settings → Plugins → **Hide UI** or Disable. `/?noframes=1` disables frames only. To keep plugins from loading at all: `python3 run.py --safe-mode` (or `PIHUB_SAFE_MODE=1`) |
+| Dashboard blank after hand-editing `index.html` | The CSP only allows the two stock inline scripts; extra inline scripts and `on*=` handlers are blocked |
 
 ## License
 

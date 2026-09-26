@@ -3,6 +3,105 @@
 All notable changes to Pi Hub are documented here. Every release ships a
 changelog entry AND matching GitHub release notes.
 
+## [8.0.0] - 2026-09-26
+
+**Plugin API v2.** Plugins can now change the standard tabs and the whole
+UI, and — when they really need it — run their own JavaScript in a
+sandbox. Existing (API v1) plugins keep working unchanged. This is a major
+release because the trust model and the browser security contract change:
+plugins are approved before they load, and the dashboard now enforces a
+strict Content-Security-Policy.
+
+### Added
+
+- **Contribution slots.** Plugins add badges, columns, buttons and banners
+  to Hosts, Services, Containers and Dockge, a status pill to the header,
+  cards to Settings and their own sidebar tabs — declared as JSON nodes
+  (`text badge status stat gauge kv link button empty stack columns section
+  table`) that the server validates and the browser renders with escaping.
+  Plugins never send HTML. Failures are isolated: a broken provider shows a
+  small `!` chip, never a blank page.
+- **Theme, CSS and layout.** Plugins can offer a colour theme (the core's own
+  CSS variables only), sanitised CSS scoped to the plugin's own elements
+  (global CSS needs its own high-risk grant), and a layout (default view,
+  navigation order and hidden items, density). Theme and layout are
+  exclusive: the admin picks one in **Settings → Appearance**.
+- **Sandboxed JavaScript frames (`ui.frame`).** Plugin JS runs only in an
+  opaque-origin `<iframe sandbox="allow-scripts">` with `connect-src 'none'`:
+  it cannot read the admin token, use cookies, make requests, navigate the
+  page or open popups. It reaches the dashboard through a validated
+  `MessageChannel` bridge (`ph.call`, `ph.read`, `ph.render`, `ph.on`,
+  `ph.theme`, `ph.toast`, `ph.resize`, `ph.asset`) with rate limits, a
+  watchdog and a crash guard. The server independently scopes every frame
+  request (`Authorization: Frame` token: the frame's own plugin routes and
+  the read APIs it declared, nothing else); the iframe URL carries a
+  one-time 30 s ticket. Frame files are pinned by SHA-256.
+- **Consent before code runs.** Enabling a plugin shows what it declares
+  (system and `ui.*` capabilities, high-risk ones flagged) and nothing is
+  imported until the admin approves. Grants live in
+  `pi_hub_plugins/plugin_state.json`; an update that asks for more waits for
+  re-approval. Plugins that were enabled before the upgrade are
+  grandfathered.
+- **Safe mode.** `/?safe=1` (no plugin UI), `/?noframes=1`, a per-plugin
+  **Hide UI** switch, and `run.py --safe-mode` / `PIHUB_SAFE_MODE=1` (no
+  plugins).
+- **Plugin config schema.** `get_config_schema()` (text, password, number,
+  checkbox, select) renders a Configure dialog; secrets are masked and kept
+  when left blank. `migrate_config()` runs on version changes.
+- **Events.** `host.state`, `container.state`, `scan.complete` and
+  `config.changed`, delivered on a dispatcher thread; a watcher probes hosts
+  (30 s) and containers (60 s) only while a plugin subscribes.
+- **Routes:** path parameters (`/item/{id}`), query strings, `PUT` and
+  `DELETE`; handlers receive only the arguments they name.
+- **Multi-file plugins** install from the store (helper modules, one
+  sub-package, `pihub-plugin.json`, README, LICENSE, `static/**`;
+  `static/frame/**` restricted to inert types and sizes; at most 300 files;
+  dotfiles, `__pycache__` and `.pyc` never extract).
+- Examples: `examples/plugins/host-insights`, `midnight-theme`,
+  `live-pulse`; a hostile `tests/fixtures/evil-frame` plus a browser test
+  that proves every escape attempt fails.
+
+### Changed
+
+- **Plugin API v1 fixes:** `TaskDef` now runs (`interval`, `autostart`),
+  `TabUIDef.position` sorts the sidebar, `ActionDef.style` and `.caps` take
+  effect, `ctx.toast()` reaches the UI, `on_host_state_change` and
+  `on_scan_complete` are called, `load()` is optional, plugins that fail to
+  load are listed with their error, and an unknown `plugin_api_version` is
+  refused. Plugin tabs are no longer rewritten on every poll.
+- **Web sessions are 12 h sliding** (login with `client:"web"`, which the
+  dashboard sends). CLI and service logins (`pi_hub/cli.py`, the Hermes
+  refresh script) keep 7 days and Bearer auth is unchanged.
+- The Containers table `colspan` for its empty/loading row now matches its
+  column count.
+
+### Security
+
+- **Hash-based Content-Security-Policy for the dashboard.** `script-src`
+  pins the SHA-256 of the page's two inline scripts (no `'self'`, no
+  `'unsafe-inline'`), `object-src 'none'`, `base-uri 'none'`,
+  `frame-ancestors 'none'`, `form-action 'self'`; every other response
+  (JSON, SVG, plugin assets, errors) gets a script-less policy. The server
+  refuses to start if the page's inline scripts cannot be hashed.
+- Plugin CSS is sanitised (no `@import`, `url(`, `expression`, backslash
+  escapes, `@font-face`, unbalanced braces) and wrapped in a per-plugin
+  scope; theme values are restricted to the core's variables.
+- Grants are consent and a kill-switch, **not** a sandbox for plugin
+  Python, which still runs in-process with the service's privileges — see
+  PLUGINS.md §7 for the honest scope.
+
+### Upgrade notes
+
+- A hand-edited `web/index.html` with extra inline scripts or `on*=`
+  handlers is now blocked by the CSP (the stock file has exactly two
+  attribute-less inline scripts and no handlers).
+- Newly enabled plugins, and updates that request new capabilities, need
+  admin approval. Plugin Python that declares `capabilities` in a form
+  Pi Hub cannot read without running it must ship `pihub-plugin.json`.
+- `<script src="/plugin-static/…">` never worked (auth header) and is now
+  blocked by the CSP too; use a frame.
+- Rolling back to 7.7.0 is safe: 7.7.0 ignores `plugin_state.json`.
+
 ## [7.7.0] - 2026-08-19
 
 ### Added

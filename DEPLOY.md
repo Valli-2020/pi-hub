@@ -1,6 +1,6 @@
 # Pi Hub — Deployment
 
-Current version: **v7.6.x**. The updater ships with core — no plugin needed.
+Current version: **v8.0.x**. The updater ships with core — no plugin needed.
 
 ## Fresh install
 
@@ -98,8 +98,17 @@ server {
 
 Plugins are installed from GitHub repos via Settings → Plugins (store).
 The store scans a repo's releases for `pihub-plugin.json` manifests and
-installs the tarball with a compile gate. See PLUGINS.md for the
-developer guide.
+installs the tarball with a compile gate. Enabling a plugin asks the admin
+to approve the capabilities it declares before any of its code is imported
+(grants are stored in `pi_hub_plugins/plugin_state.json`, mode 0600).
+See PLUGINS.md for the developer guide.
+
+**If a plugin breaks the UI:** open `/?safe=1`, or start the server with
+`--safe-mode` / `PIHUB_SAFE_MODE=1` so no plugin loads. If you run behind a
+reverse proxy, do not add your own `Content-Security-Policy` header: the
+dashboard sends a hash-pinned policy (script-src lists the SHA-256 of its two
+inline scripts) and plugin frames are served under their own sandbox
+policy; an added or rewritten header would break them.
 
 ## Verify
 
@@ -110,10 +119,13 @@ curl http://<host>:8898/api/hosts/status    # → < 5s
 curl -sI http://<host>:8898/ | grep -i etag # → ETag present
 ```
 
-## Security notes (v7.5.x)
+## Security notes (v8.0.x)
 
 - The update mechanism lives in **core** (`pi_hub/updater.py`) — a
   plugin failure can never break the update path.
+- The dashboard CSP pins its inline scripts by hash (no `'unsafe-inline'`);
+  plugin JavaScript only runs in opaque-origin sandboxed iframes.
+- Plugin grants are consent, not a sandbox: plugin Python runs in-process.
 - Plugin store routes require a real admin session even when auth is
   disabled; plugin names reject `.`/`..` (path containment enforced).
 - Release-asset downloads strip credentials on cross-host redirects and
