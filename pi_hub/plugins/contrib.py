@@ -373,6 +373,10 @@ def sanitize_css(css: Any) -> str:
         raise ContribError("css must be a string")
     if len(css.encode("utf-8")) > MAX_CSS_BYTES:
         raise ContribError("css too large (max %d bytes)" % MAX_CSS_BYTES)
+    # Browsers turn CR, CRLF and FF into LF before tokenising, and a newline ends
+    # a string.  Reject what we cannot reason about instead of guessing.
+    if "\r" in css or "\f" in css or "\x00" in css:
+        raise ContribError("css contains a forbidden control character")
     stripped = re.sub(r"/\*.*?\*/", "", css, flags=re.S)
     if "/*" in stripped or "*/" in stripped:
         raise ContribError("unterminated comment")

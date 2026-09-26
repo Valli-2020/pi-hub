@@ -114,6 +114,8 @@ for bad in ["@import 'x';", "a{background:url(http://evil/x)}", "a{b:expression(
     check("css rejected: %r" % bad[:32], rejects(contrib.sanitize_css, bad))
 check("css: braces inside strings cannot close the scope wrapper",
       rejects(contrib.sanitize_css, 'a{content:"{"}}html{background:red}b{content:"{"}}'))
+check("css: CR/FF/NUL cannot hide string boundaries",
+      all(rejects(contrib.sanitize_css, 'a{b:"%s}} body{display:none} a{c:"}' % c) for c in ("\f", "\r", "\x00")))
 check("css: unterminated string rejected", rejects(contrib.sanitize_css, 'a{content:"x}'))
 check("css: a legit content string is fine", contrib.sanitize_css('a::before{content:"ok"}') == 'a::before{content:"ok"}')
 check("css size cap", rejects(contrib.sanitize_css, "a{b:c}" * 6000))
