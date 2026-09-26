@@ -1,0 +1,10 @@
+{
+  "name": "midnight-theme",
+  "version": "1.0.0",
+  "description": "A violet theme, a compact layout and a few CSS touches (Plugin API v2 demo: theme, layout and style slots)",
+  "min_core_version": "8.0.0",
+  "plugin_api_version": 2,
+  "author": "Pi Hub",
+  "license": "MIT",
+  "capabilities": ["ui.theme", "ui.layout", "ui.style"]
+}

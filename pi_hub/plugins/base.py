@@ -259,8 +259,8 @@ class Plugin(abc.ABC):
     events: list[str] = []
 
     def load(self, ctx: "PluginContext") -> None:
-        """Called once when the plugin is loaded.  Set up state here."""
-        raise NotImplementedError
+        """Called once when the plugin is loaded.  Set up state here.
+        Optional: a purely declarative plugin (theme, layout, style) has none."""
 
     def unload(self) -> None:
         """Called when the plugin is disabled.  Cancel background work."""
