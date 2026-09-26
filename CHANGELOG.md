@@ -3,6 +3,20 @@
 All notable changes to Pi Hub are documented here. Every release ships a
 changelog entry AND matching GitHub release notes.
 
+## [8.1.3] - 2026-09-27
+
+Correction to 8.1.2, which shipped the wrong yellow. Only `web/index.html`
+changes.
+
+### Fixed
+
+- **The "Open" button uses Pi Hub's own yellow/orange (`--accent`) again.**
+  8.1.2 introduced a separate, much yellower token (hue 92) for the button fill
+  — that was not the intent. The button is now filled with `--accent` and
+  `--accent-ink`, brightening to `--accent-hover`, exactly like the primary
+  button, and the three stray `--open*` tokens are gone. The orange `--link`
+  colour for the service name from 8.1.2 is unchanged and still correct.
+
 ## [8.1.2] - 2026-09-27
 
 Service cards get their colour back. Only `web/index.html` changes; no API,
