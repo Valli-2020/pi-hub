@@ -10,10 +10,12 @@ SECURITY S5 — NO ``Access-Control-Allow-Origin: *`` (v5 UI is same-origin).
 
 from __future__ import annotations
 
+import base64
 import gzip
 import hashlib
 import json as _json
 import os as _os
+import re as _re
 import sys as _sys
 import threading
 import time
@@ -79,7 +81,70 @@ def _preload_statics() -> None:
             pass
 
 
+# ── Content-Security-Policy (8.0) ────────────────────────────────────────────
+#
+# The dashboard's CSP pins its two inline <script> blocks by sha256 instead of
+# allowing 'unsafe-inline' — injected markup (an <img onerror>, a <script>
+# smuggled through a plugin field) no longer executes, and 'self' is NOT in
+# script-src, so no JSON / plugin-static URL can ever run as script in the
+# dashboard's origin.  Hashes (not per-response nonces): the file is static,
+# so preload cache, ETag and 304s keep working.  style-src keeps
+# 'unsafe-inline' because the renderers build style="width:…" strings.
+
+_SCRIPT_TAG_RE = _re.compile(rb"<script(\b[^>]*)>(.*?)</script\s*>", _re.S | _re.I)
+_SCRIPT_ANY_RE = _re.compile(rb"<script\b", _re.I)
+
+
+def inline_script_hashes(data: bytes) -> list[str]:
+    """CSP source expressions (``'sha256-…'``) for every inline script of
+    *data*.  Fails loudly when the page has a ``<script>`` with attributes
+    (external / typed), a CR byte (browsers normalise CRLF before hashing,
+    so the hash would not match) or when the tag count does not match — a
+    silent mismatch would ship a dashboard that renders blank."""
+    hashes: list[str] = []
+    for m in _SCRIPT_TAG_RE.finditer(data):
+        if m.group(1).strip():
+            raise RuntimeError("index.html: <script> with attributes is not allowed "
+                               "under the hash CSP")
+        digest = base64.b64encode(hashlib.sha256(m.group(2)).digest()).decode()
+        hashes.append("'sha256-%s'" % digest)
+    if not hashes or len(hashes) != len(_SCRIPT_ANY_RE.findall(data)):
+        raise RuntimeError("index.html: inline <script> count does not match the "
+                           "hashes computed for the CSP")
+    if b"\r" in data:
+        raise RuntimeError("index.html contains CR bytes — CSP script hashes "
+                           "would not match (use LF line endings)")
+    return hashes
+
+
+def dashboard_csp(script_hashes: list[str]) -> str:
+    return ("default-src 'self'; script-src %s; style-src 'self' 'unsafe-inline'; "
+            "img-src 'self' data:; font-src 'self'; connect-src 'self'; "
+            "frame-src 'self'; worker-src 'none'; object-src 'none'; "
+            "base-uri 'none'; form-action 'self'; frame-ancestors 'none'"
+            % " ".join(script_hashes))
+
+
+#: Everything that is not the dashboard page (JSON, SVG, plugin assets, error
+#: bodies) gets a maximally restrictive policy: it never needs to run script.
+GENERIC_CSP = ("default-src 'none'; style-src 'unsafe-inline'; img-src data:; "
+               "base-uri 'none'; form-action 'none'; frame-ancestors 'none'")
+
+_CSP_CACHE: dict[str, str] = {}
+
+
+def _csp_for(path: str | None, data: bytes | None = None) -> str:
+    """CSP header value for a response to *path*."""
+    if path == "/":
+        if DEV_MODE and data is not None:
+            return dashboard_csp(inline_script_hashes(data))
+        return _CSP_CACHE.get("/", GENERIC_CSP)
+    return GENERIC_CSP
+
+
 _preload_statics()
+if "/" in _STATIC_CACHE:
+    _CSP_CACHE["/"] = dashboard_csp(inline_script_hashes(_STATIC_CACHE["/"]))
 
 
 def _read_static(path: str) -> bytes | None:
@@ -133,18 +198,17 @@ _SECURITY_HEADERS = {
     "X-Frame-Options": "DENY",
     "X-Content-Type-Options": "nosniff",
     "Referrer-Policy": "no-referrer",
-    # app is deliberately inline (single-file UI); frame-ancestors kills clickjacking
-    "Content-Security-Policy": "default-src 'self'; img-src 'self' data:; "
-                               "style-src 'self' 'unsafe-inline'; "
-                               "script-src 'self' 'unsafe-inline'; "
-                               "connect-src 'self'; frame-ancestors 'none'",
 }
 
 
-def _send_security_headers(self) -> None:  # noqa: N805
-    """Attach hardening headers to every response."""
+def _send_security_headers(self, path: str | None = None,
+                           data: bytes | None = None) -> None:  # noqa: N805
+    """Attach hardening headers to every response.  The CSP depends on the
+    response: only the dashboard page (``/``) may run its (hash-pinned)
+    inline scripts."""
     for k, v in _SECURITY_HEADERS.items():
         self.send_header(k, v)
+    self.send_header("Content-Security-Policy", _csp_for(path, data))
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -295,8 +359,7 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_header("Content-Type", content_type)
                 self.send_header("Content-Length", str(len(data)))
                 self.send_header("Cache-Control", "public, max-age=3600")
-                for k, v in _SECURITY_HEADERS.items():
-                    self.send_header(k, v)
+                _send_security_headers(self)
                 self.end_headers()
                 try:
                     self.wfile.write(data)
@@ -413,6 +476,7 @@ class Handler(BaseHTTPRequestHandler):
                 self.end_headers()
                 return
 
+        raw = data                      # pre-gzip bytes (CSP hashes are computed on these)
         content_type = _CONTENT_TYPES.get(path, "application/octet-stream")
         cache_control = _CACHE_CONTROL.get(path, "no-cache")
 
@@ -431,7 +495,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("ETag", f'"{etag}"')
         if content_encoding:
             self.send_header("Content-Encoding", content_encoding)
-        _send_security_headers(self)
+        _send_security_headers(self, path, raw)
         # SECURITY S5 — NO Access-Control-Allow-Origin
         self.end_headers()
 

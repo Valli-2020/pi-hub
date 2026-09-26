@@ -480,13 +480,23 @@ def _save_sessions(sessions: dict) -> None:
 _sessions = _load_sessions()
 
 
-def issue_session(username: str, role: str) -> str:
+#: Browser logins (client == "web") get a shorter, sliding session: the token
+#: lives in localStorage, so a short lifetime limits what a stolen one is
+#: worth.  CLI / service logins keep the long SESSION_DAYS lifetime.
+WEB_SESSION_HOURS = 12
+
+
+def issue_session(username: str, role: str, web: bool = False) -> str:
     token = secrets.token_urlsafe(32)
+    now = time.time()
+    rec = {"user": username, "role": role,
+           "expires": now + SESSION_DAYS * 86400}
+    if web:
+        ttl = WEB_SESSION_HOURS * 3600
+        rec["ttl"] = ttl
+        rec["expires"] = now + ttl
     with _sessions_lock:
-        _sessions[_token_key(token)] = {
-            "user": username, "role": role,
-            "expires": time.time() + SESSION_DAYS * 86400,
-        }
+        _sessions[_token_key(token)] = rec
         _save_sessions(_sessions)
     return token
 
@@ -500,10 +510,16 @@ def validate_token(token: str) -> dict | None:
         s = _sessions.get(key)
         if not s:
             return None
-        if s["expires"] < time.time():
+        now = time.time()
+        if s["expires"] < now:
             del _sessions[key]
             _save_sessions(_sessions)
             return None
+        ttl = s.get("ttl")
+        if isinstance(ttl, (int, float)) and ttl > 0 and s["expires"] - now < ttl * 0.9:
+            # sliding window: extend, but only write the file once per ~10 % of ttl
+            s["expires"] = now + ttl
+            _save_sessions(_sessions)
         return {"user": s["user"], "role": s["role"]}
 
 
