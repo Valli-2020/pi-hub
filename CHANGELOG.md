@@ -3,6 +3,42 @@
 All notable changes to Pi Hub are documented here. Every release ships a
 changelog entry AND matching GitHub release notes.
 
+## [8.2.0] - 2026-11-08
+
+Dockge stacks can now be controlled from Pi Hub, on more than one host.
+
+### Added
+
+- **Start, Stop, Restart, Update and Logs for each stack** in the Dockge tab.
+  Pi Hub runs `docker compose` in the stack directory, locally or over SSH, so
+  changes show up in Dockge as well. Stop, Restart and Update ask first.
+- **Several Dockge hosts.** `dockge.endpoints` in `config.json` lists them, each
+  with an optional `host_id` from the host registry and an "Open Dockge" link.
+  The tab groups stacks by host and shows an error for an unreachable one.
+- **`stacks` capability** per `endpoint:stack` target, in the user capability
+  matrix. It covers both control and logs. Admins keep full access.
+- `GET /api/dockge/endpoints`, `GET /api/dockge/<endpoint>/<stack>/logs` and
+  `POST /api/dockge/<endpoint>/<stack>/<start|stop|restart|update>`.
+
+### Changed
+
+- **Stacks show their real state:** `running`, `partial`, `exited` or
+  `inactive`, instead of `managed` for everything. `/api/dockge/stacks` keeps
+  `name` and `status` and adds `running`, `total`, `managed`, `endpoint` and
+  `endpoint_name`.
+- Stacks outside the stacks directory are listed read-only.
+
+### Removed
+
+- The HTTP fallback to `<dockge>/api/stacks`. Dockge has no such API; the call
+  only ever returned its HTML page.
+
+### Upgrade notes
+
+Without `dockge.endpoints` Pi Hub uses one local endpoint on
+`dockge.stacks_dir`. The user running Pi Hub needs access to Docker, and remote
+endpoints need working SSH keys. See `config.example.json`.
+
 ## [8.1.4] - 2026-09-27
 
 One colour change on the service card. Only `web/index.html` changes.

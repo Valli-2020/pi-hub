@@ -5,4 +5,4 @@ Multi-Proxmox instances, web-UI setup/settings, per-user capability matrix
 Python 3 stdlib only.
 """
 
-__version__ = "8.1.4"
+__version__ = "8.2.0"

@@ -372,7 +372,7 @@ def public_config() -> Dict[str, Any]:
 
     # Dockge: expose only {enabled: bool}
     dockge_raw = cfg.get("dockge", {}) or {}
-    dockge = {"enabled": bool(dockge_raw.get("enabled", bool(dockge_raw.get("base_url"))))}
+    dockge = {"enabled": bool(dockge_raw.get("enabled", bool(dockge_raw.get("base_url") or dockge_raw.get("endpoints"))))}
 
     # Proxmox: default instance {enabled, host} + full instance list — NO tokens
     insts = proxmox_instances()
@@ -505,7 +505,7 @@ def admin_config() -> Dict[str, Any]:
         "groups": cfg.get("groups", {}),
         # base_url deliberately omitted (v7 #11): it may carry credentials
         "dockge": {
-            "enabled": bool(dockge_raw.get("enabled", bool(dockge_raw.get("base_url")))),
+            "enabled": bool(dockge_raw.get("enabled", bool(dockge_raw.get("base_url") or dockge_raw.get("endpoints")))),
         },
         "proxmox_instances": insts,
         "scan": {"auto_add": bool((cfg.get("scan") or {}).get("auto_add", False))},

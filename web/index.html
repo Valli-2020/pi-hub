@@ -303,7 +303,19 @@
   .row .icon svg { width:15px; height:15px; }
   .row .name { font-size:14px; font-weight:540; }
   .row .chip { margin-left:auto; }
-  .row[data-state="stopped"] .name, .row[data-state="exited"] .name { color:var(--muted); }
+  .row[data-state="stopped"] .name, .row[data-state="exited"] .name, .row[data-state="inactive"] .name { color:var(--muted); }
+  .stackhead { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin:18px 0 8px; }
+  .stackhead:first-child { margin-top:0; }
+  .stackhead h3 { margin:0; font-size:14px; font-weight:650; }
+  .stackhead .btn { margin-left:auto; }
+  .stack-row { flex-wrap:wrap; }
+  .stack-row .chip { margin-left:auto; }
+  .stack-acts { display:flex; gap:6px; flex-wrap:wrap; justify-content:flex-end; }
+  .stack-note { font-size:12.5px; color:var(--muted); }
+  .logbox { margin:0; padding:12px; max-height:60vh; overflow:auto; font:12px/1.5 ui-monospace, monospace;
+            white-space:pre-wrap; overflow-wrap:anywhere; background:var(--surface-2);
+            border:1px solid var(--border); border-radius:var(--r-md); }
+  @media (max-width:640px) { .stack-acts { width:100%; justify-content:flex-start; } }
 
   /* ── Table ──────────────────────────────────────────────────────────── */
   .tablewrap { border:1px solid var(--border); border-radius:var(--radius); overflow:hidden;
@@ -898,7 +910,7 @@
     <section class="view" data-view="stacks" hidden>
       <div class="viewhead"><h2>Dockge stacks</h2><span class="sub" id="sub-stacks"></span></div>
       <div class="ph-slot ph-top" data-slot="stacks.top" data-key=""></div>
-      <div id="stacks" class="rows"></div>
+      <div id="stacks"></div>
     </section>
 
     <section class="view" data-view="users" hidden>
@@ -1010,6 +1022,16 @@
   </div>
 </dialog>
 
+<dialog id="logsdlg" class="capsdlg">
+  <div class="dlg">
+    <h3 id="logs-title">Logs</h3>
+    <pre class="logbox" id="logs-body"></pre>
+    <div class="btn-row" style="justify-content:flex-end;margin-top:14px">
+      <button class="btn btn-quiet" id="logs-close">Close</button>
+    </div>
+  </div>
+</dialog>
+
 <dialog id="capsdlg" class="capsdlg">
   <div class="dlg">
     <h3 id="caps-title">Capabilities</h3>
@@ -1077,6 +1099,7 @@ const slug = s => String(s).toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-
 const esc  = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
 const SVG = {
+  pull: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11M7 11l5 5 5-5M5 20h14"/></svg>',
   ext:  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M14 4h6v6M20 4l-9 9"/><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg>',
   play: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M6 4l14 8-14 8Z"/></svg>',
   stop: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>',
@@ -1090,7 +1113,7 @@ const SVG = {
   x:    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg>'
 };
 
-const S = { cfg:{}, icons:{}, hosts:[], services:[], containers:[], stacks:[],
+const S = { cfg:{}, icons:{}, hosts:[], services:[], containers:[], stacks:[], stackEndpoints:[], stackBusy:{},
             hostState:{}, svcState:{}, sort:{key:'vmid', dir:1}, lastOk:0, view:'hosts' };
 
 /* ── Capability checks (v6.1) ──────────────────────────────────────────── */
@@ -1227,10 +1250,11 @@ const CAP_ACTIONS = [
   ['reboot',     'Reboot'],
   ['dualboot',   'Dual boot'],
   ['containers', 'Containers'],
+  ['stacks',     'Dockge stacks'],
 ];
 let capsTarget = null;
 
-function capsTargets(containers){
+function capsTargets(containers, stacks){
   // columns: host ids + instance-qualified container targets (deduped)
   // v7 #2: containers are `instance:vmid` — bare VMIDs are dropped by the
   // backend post-migration and would silently wipe existing grants.
@@ -1241,6 +1265,10 @@ function capsTargets(containers){
     const v = (c.instance || '') + ':' + String(c.vmid);
     if (!seen[v]) { seen[v] = 1; out.push({ id: v, label: 'CT ' + c.vmid + ' ' + (c.name || '') + ' @' + (c.instance || '?') }); }
   });
+  (stacks || []).filter(st => st.managed).forEach(st => {
+    const v = st.endpoint + ':' + st.name;
+    if (!seen[v]) { seen[v] = 1; out.push({ id: v, label: st.name + ' @' + st.endpoint_name }); }
+  });
   if (!out.length) out.push({ id: '*', label: '(no hosts configured)' });
   return out;
 }
@@ -1249,9 +1277,12 @@ function openCapsEditor(username){
   capsTarget = username;
   // Fetch containers fresh so the caps editor always shows all container
   // targets — even if the user hasn't visited the Containers tab yet.
-  apiFetch('/api/proxmox/containers').then(r => r.json()).then(d => {
+  Promise.all([
+    apiFetch('/api/proxmox/containers').then(r => r.json()),
+    apiFetch('/api/dockge/stacks').then(r => r.json()),
+  ]).then(([d, stacks]) => {
     const containers = (d && d.success && d.containers) ? d.containers : [];
-    const targets = capsTargets(containers);
+    const targets = capsTargets(containers, stacks);
     $('#caps-title').textContent = 'Capabilities — ' + username;
     $('#caps-head').innerHTML = targets.map(t => '<th class="targets">' + esc(t.label) + '</th>').join('');
     return apiFetch('/api/auth/users').then(r => r.json()).then(users => {
@@ -1272,6 +1303,7 @@ function openCapsEditor(username){
 }
 
 $('#caps-cancel').addEventListener('click', () => $('#capsdlg').close());
+$('#logs-close').addEventListener('click', () => $('#logsdlg').close());
 $('#caps-save').addEventListener('click', () => {
   const caps = {};
   $$('#caps-body input[type=checkbox]:checked').forEach(cb => {
@@ -1828,28 +1860,129 @@ function renderProxmoxCard(pm){
 }
 
 /* ── Stacks ────────────────────────────────────────────────────────────── */
-function renderStacks(stacks){
+function stackKey(st){ return st.endpoint + ':' + st.name; }
+
+function stackLabel(st){
+  if (S.stackBusy[stackKey(st)]) return 'pending';
+  return st.status === 'exited' || st.status === 'inactive' ? 'stopped' :
+         st.status === 'partial' ? 'degraded' : st.status;
+}
+
+function stackChip(st){
+  const busy = S.stackBusy[stackKey(st)];
+  const text = busy || (st.status === 'partial' ? st.running + '/' + st.total + ' running' : st.status);
+  return '<span class="chip" data-state="' + esc(stackLabel(st)) + '"><span class="dot"></span>' + esc(text) + '</span>';
+}
+
+function stackActions(st){
+  const key = stackKey(st);
+  if (!st.managed) return '<span class="stack-note">Outside stacks directory</span>';
+  if (!canAct('stacks', key)) return '';
+  const busy = S.stackBusy[key] ? 'disabled ' : '';
+  const data = busy + 'data-ep="' + esc(st.endpoint) + '" data-name="' + esc(st.name) + '"';
+  const up = st.status === 'running' || st.status === 'partial';
+  return (up ? '' : btn('ok', SVG.play, 'Start', 'stack-start', key, data)) +
+         (up ? btn('quiet', SVG.redo, 'Restart', 'stack-restart', key, data) : '') +
+         btn('quiet', SVG.pull, 'Update', 'stack-update', key, data) +
+         (st.status === 'inactive' ? '' : btn('quiet', SVG.info, 'Logs', 'stack-logs', key, data)) +
+         (up ? btn('bad', SVG.stop, 'Stop', 'stack-stop', key, data) : '');
+}
+
+function renderStacks(stacks, endpoints){
   S.stacks = Array.isArray(stacks) ? stacks : [];
+  if (Array.isArray(endpoints)) S.stackEndpoints = endpoints;
+  const eps = S.stackEndpoints || [];
   const el = $('#stacks'); el.innerHTML = '';
-  if (!stacks || !stacks.length) {
+  const running = S.stacks.filter(s => s.status === 'running').length;
+  $('#c-stacks').textContent = S.stacks.length;
+  $('#sub-stacks').textContent = running + ' running';
+  if (!S.stacks.length && !eps.length) {
     el.innerHTML = '<div class="empty"><strong>No stacks reported</strong>' +
-      '<p>Dockge returned an empty list. Check that the agent is reachable.</p></div>';
-    $('#c-stacks').textContent = '0';
+      '<p>Check the dockge section of config.json.</p></div>';
     return;
   }
-  [...stacks].sort((a, b) => (a.status !== 'running') - (b.status !== 'running') ||
-                            String(a.name).localeCompare(String(b.name))).forEach(st => {
-    const row = document.createElement('div');
-    row.className = 'row';
-    row.dataset.state = st.status;
-    row.dataset.hay = (st.name + ' ' + st.status).toLowerCase();
-    row.innerHTML = iconTile('dockge') + '<span class="name">' + esc(st.name) + '</span>' + PH.slot('stacks.row.badges', st.name) + chip(st.status);
-    el.appendChild(row);
+  eps.forEach(ep => {
+    const head = document.createElement('div');
+    head.className = 'stackhead';
+    const mine = S.stacks.filter(s => s.endpoint === ep.id);
+    head.innerHTML = '<h3>' + esc(ep.name) + '</h3>' +
+      (ep.online ? '<span class="sub">' + mine.filter(s => s.status === 'running').length + ' of ' + mine.length + ' running</span>'
+                 : '<span class="stack-note">' + esc(ep.error) + '</span>') +
+      (ep.url ? '<a class="btn btn-sm btn-quiet" href="' + esc(ep.url) + '" target="_blank" rel="noopener">' + SVG.ext + 'Open Dockge</a>' : '');
+    el.appendChild(head);
+    if (!ep.online) return;
+    const list = document.createElement('div');
+    list.className = 'rows';
+    if (!mine.length) list.innerHTML = '<div class="row"><span class="stack-note">No stacks on this host</span></div>';
+    [...mine].sort((a, b) => (a.status !== 'running') - (b.status !== 'running') || String(a.name).localeCompare(String(b.name))).forEach(st => {
+      const row = document.createElement('div');
+      row.className = 'row stack-row';
+      row.dataset.state = st.status;
+      row.dataset.hay = (st.name + ' ' + st.status + ' ' + ep.name).toLowerCase();
+      row.innerHTML = iconTile('dockge') + '<span class="name">' + esc(st.name) + '</span>' +
+        PH.slot('stacks.row.badges', st.name) + stackChip(st) +
+        '<div class="stack-acts">' + stackActions(st) + '</div>';
+      list.appendChild(row);
+    });
+    el.appendChild(list);
   });
-  $('#c-stacks').textContent = stacks.length;
-  $('#sub-stacks').textContent = stacks.filter(s => s.status === 'running').length + ' running';
   PH.paint(el);
   applyFilter();
+}
+
+function stackAction(action, ep, name){
+  const key = ep + ':' + name;
+  const url = '/api/dockge/' + encodeURIComponent(ep) + '/' + encodeURIComponent(name) + '/' + action;
+  const run = () => {
+    S.stackBusy[key] = action + '…';
+    renderStacks(S.stacks);
+    apiFetch(url, { method:'POST' }).then(r => r.json()).then(d => {
+      if (!d.success) throw new Error(d.error || 'Failed');
+      pollStackTask(key, name, action, d.task);
+    }).catch(e => {
+      delete S.stackBusy[key];
+      toast(e.message || 'Request failed', 'err');
+      renderStacks(S.stacks);
+    });
+  };
+  const notes = {
+    stop: ['Stop stack', 'Stop ' + name + ' now? Its services go offline.'],
+    restart: ['Restart stack', 'Restart ' + name + ' now?'],
+    update: ['Update stack', 'Pull new images for ' + name + ' and recreate changed containers?'],
+  };
+  if (notes[action]) confirmAction(notes[action][0], notes[action][1], run);
+  else run();
+}
+
+function pollStackTask(key, name, action, task){
+  const finish = (msg, kind) => {
+    delete S.stackBusy[key];
+    toast(msg, kind);
+    loadStacks();
+  };
+  const started = Date.now();
+  (function tick(){
+    apiFetch('/api/task/' + encodeURIComponent(task)).then(r => r.json()).then(t => {
+      if (t.status === 'done') return finish(t.message, 'ok');
+      if (t.status === 'error') return finish(t.message, 'err');
+      if (Date.now() - started > 930000) return finish(name + ': no result, check Dockge', 'err');
+      setTimeout(tick, 1500);
+    }).catch(() => finish(name + ': lost track of ' + action, 'err'));
+  })();
+}
+
+function stackLogs(ep, name){
+  const body = $('#logs-body');
+  $('#logs-title').textContent = name + ' logs';
+  body.textContent = 'Loading…';
+  $('#logsdlg').showModal();
+  apiFetch('/api/dockge/' + encodeURIComponent(ep) + '/' + encodeURIComponent(name) + '/logs?tail=300')
+    .then(r => r.json())
+    .then(d => {
+      body.textContent = d.success ? (d.logs || 'No log output') : (d.error || 'Failed to load logs');
+      body.scrollTop = body.scrollHeight;
+    })
+    .catch(() => { body.textContent = 'Failed to load logs'; });
 }
 
 /* ── Containers ────────────────────────────────────────────────────────── */
@@ -1979,6 +2112,8 @@ document.addEventListener('click', e => {
   else if (act === 'db-switch-win') dualbootAction(id, 'dualboot/switch', null, { target: 'windows' });
   else if (act === 'ct-start' || act === 'ct-stop') ctAction(id, act.slice(3), b.dataset.name || '', b.dataset.inst || '');
   else if (act === 'ct-retry') pollContainers();
+  else if (act === 'stack-logs') stackLogs(b.dataset.ep, b.dataset.name);
+  else if (act.startsWith('stack-')) stackAction(act.slice(6), b.dataset.ep, b.dataset.name);
 });
 
 function ctAction(vmid, action, name, inst){
@@ -2104,8 +2239,13 @@ async function pollContainers(){
 }
 
 async function loadStacks(){
-  try { renderStacks(await apiFetch('/api/dockge/stacks').then(r => r.json())); }
-  catch(e) { renderStacks([]); }
+  try {
+    const [stacks, endpoints] = await Promise.all([
+      apiFetch('/api/dockge/stacks').then(r => r.json()),
+      apiFetch('/api/dockge/endpoints').then(r => r.json()),
+    ]);
+    renderStacks(stacks, endpoints);
+  } catch(e) { renderStacks([], []); }
 }
 
 async function refreshAll(){

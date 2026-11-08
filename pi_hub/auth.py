@@ -37,7 +37,7 @@ _USERNAME_RE = re.compile(r"[A-Za-z0-9._-]{1,32}")
 # targets (host ids, or `instance:vmid` for containers since v7).  admin role
 # = everything (caps ignored); viewer role = exactly the listed caps; missing
 # caps = read-only.
-CAP_ACTIONS = ("wake", "shutdown", "reboot", "dualboot", "containers")
+CAP_ACTIONS = ("wake", "shutdown", "reboot", "dualboot", "containers", "stacks")
 # v7 (#14): optional `instance:` qualifier for container targets.
 _TARGET_RE = re.compile(r"[A-Za-z0-9._-]{1,64}(:[A-Za-z0-9._-]{1,64})?")
 
@@ -664,6 +664,7 @@ def classify(method: str, path: str) -> str:
         path.startswith("/api/hosts/")
         # v7 (#8): instanced route /api/proxmox/<instance>/container/<vmid>/<action>
         or (path.startswith("/api/proxmox/") and "/container/" in path)
+        or path.startswith("/api/dockge/")
     ):
         return "read"                              # authenticated; caps checked in route
     return "admin"                                 # PUT/DELETE/...: deny-by-default

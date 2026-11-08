@@ -23,7 +23,9 @@ Breaking changes require both files to be updated simultaneously.
 | `GET` | `/api/hosts/dualboot` | DEPRECATED alias for `/api/hosts/status` — kept one release for cached frontends |
 | `GET` | `/api/status` | `{service_name: "online"\|"offline"}` — SERVICES, not hosts |
 | `GET` | `/api/proxmox/containers` | `{success, containers: [{vmid, name, status, cpu, mem, maxmem, tags[], instance}], errors?}` — ALL instances merged; each container carries its instance id |
-| `GET` | `/api/dockge/stacks` | `[{name, status}, ...]` |
+| `GET` | `/api/dockge/stacks` | `[{name, status, running, total, managed, endpoint, endpoint_name}, ...]`; status is `running`, `partial`, `exited` or `inactive` |
+| `GET` | `/api/dockge/endpoints` | `[{id, name, url, online, error}, ...]` |
+| `GET` | `/api/dockge/<endpoint>/<stack>/logs?tail=200` | `{success, logs}`; needs the `stacks` cap on `<endpoint>:<stack>` |
 | `GET` | `/api/task/<name>` | `{status, message, ts}` or 404 |
 | `GET` | `/api/config/full` | **admin only** — full config for the Settings UI; tokens redacted to `{set, source}` (`env`\|`secrets`\|`secrets-legacy`\|`config`\|`none`); includes host mac/ssh_user/grub_entries, service status_host/status_port/health_path/host/source, proxmox instances (no base_url in dockge) |
 
@@ -70,6 +72,7 @@ Caps changes revoke the user's sessions immediately.
 | `POST` | `/api/config/services/<name>` | service fields | **admin** — update service (PATCH semantics; rename allowed) |
 | `DELETE` | `/api/config/services/<name>` | — | **admin** — delete service |
 | `POST` | `/api/config/proxmox` | `{instances: [{id, host, node, enabled?, ssh_user?}], tokens?: {id: token}}` | **admin** — replace instance list (write-only tokens → secrets.json `proxmox_tokens`; blank = keep; removed instances strip their `id:` caps and prune tokens) |
+| `POST` | `/api/dockge/<endpoint>/<stack>/<start\|stop\|restart\|update>` | — | 202 `{success, task, message}`, poll `/api/task/<task>`; needs the `stacks` cap on `<endpoint>:<stack>` |
 | `POST` | `/api/config/meta` | `{title?, dockge?: {enabled?}, groups?, scan?: {auto_add?, sources?}}` | **admin** — dashboard meta settings; scan sources validated against fixed types, `dockge-ssh` host_id must exist in the host registry |
 | `POST` | `/api/config/scan` | — | **admin** — run service discovery (no writes) → `{success, candidates: [{name\|null, port, url, target, host, source: "nginx"\|"dockge", url_guessed}]}` |
 | `POST` | `/api/config/scan/apply` | `{candidates: [...]}` | **admin** — add confirmed candidates (nginx candidates require a name; duplicates skipped) |

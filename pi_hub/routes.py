@@ -698,6 +698,9 @@ def handle_get(path: str, params: Params, session: dict | None = None) -> Respon
     if path == "/api/dockge/stacks":
         return dockge.list_stacks(), 200
 
+    if path == "/api/dockge/endpoints":
+        return dockge.list_endpoints(), 200
+
     if path == "/api/update/status":
         # ADMIN ONLY (classify).  Serves the cached release check — never
         # triggers network I/O on a GET.
@@ -748,6 +751,18 @@ def handle_get(path: str, params: Params, session: dict | None = None) -> Respon
             return dict(st, ui=[c for c in (st["declared"] or []) if c.startswith("ui.")]), 200
 
     # ── Prefix routes ────────────────────────────────────────────────────
+    # GET /api/dockge/<endpoint>/<stack>/logs  (logs can hold secrets: cap-gated)
+    parts = [p for p in path.split("/") if p]
+    if len(parts) == 5 and parts[1] == "dockge" and parts[4] == "logs":
+        err = _require_cap(session, "stacks", dockge.cap_target(parts[2], parts[3]))
+        if err:
+            return err
+        try:
+            tail = int((params.get("tail") or [dockge.LOGS_DEFAULT_TAIL])[0])
+        except ValueError:
+            return {"error": "tail must be a number"}, 400
+        return dockge.stack_logs(parts[2], parts[3], tail)
+
     if path.startswith("/api/task/"):
         name = path[len("/api/task/"):].rstrip("/")
         t = tasks.get_task_status(name)
@@ -978,13 +993,13 @@ def handle_post(path: str, params: Params, body: Dict[str, Any],
             title = str(body.get("title", "")).strip()
             if title:
                 cfg["title"] = title
-            dockge = body.get("dockge")
-            if isinstance(dockge, dict):
+            dockge_meta = body.get("dockge")
+            if isinstance(dockge_meta, dict):
                 d = dict(cfg.get("dockge", {}) or {})
-                if "enabled" in dockge:
-                    d["enabled"] = bool(dockge["enabled"])
-                if "base_url" in dockge:
-                    d["base_url"] = str(dockge["base_url"]).strip()
+                if "enabled" in dockge_meta:
+                    d["enabled"] = bool(dockge_meta["enabled"])
+                if "base_url" in dockge_meta:
+                    d["base_url"] = str(dockge_meta["base_url"]).strip()
                 cfg["dockge"] = d
             groups = body.get("groups")
             if isinstance(groups, dict):
@@ -1122,6 +1137,14 @@ def handle_post(path: str, params: Params, body: Dict[str, Any],
         and parts[2] == "container"
     ):
         return _handle_container_action("", parts[3], parts[4], session)
+
+    # ── POST /api/dockge/<endpoint>/<stack>/<action> ──────────────────────
+    if len(parts) == 5 and parts[1] == "dockge":
+        err = _require_cap(session, "stacks", dockge.cap_target(parts[2], parts[3]))
+        if err:
+            return err
+        return dockge.start_action(parts[2], parts[3], parts[4],
+                                   (session or {}).get("user", ""))
 
     # ── POST /api/update/check  (admin — force a GitHub release check) ────
     if path == "/api/update/check":
