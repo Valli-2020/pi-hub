@@ -10,8 +10,9 @@ Endpoints come from ``dockge.endpoints`` in config.json::
     {"id": "pi",  "name": "Pi",  "stacks_dir": "/opt/stacks", "url": "http://192.168.1.10:5001"}
     {"id": "vps", "name": "VPS", "host_id": "vps", "url": "https://dockge.example.com"}
 
-Without ``host_id`` the endpoint is this machine.  Without ``endpoints`` there
-is a single local endpoint on ``dockge.stacks_dir``.
+Without ``host_id`` the endpoint is this machine.  ``pct`` (with a Proxmox host
+as ``host_id``) runs Docker inside that LXC container through ``pct exec``.
+Without ``endpoints`` there is a single local endpoint on ``dockge.stacks_dir``.
 
 Public API
     dockge_enabled()                     → bool
@@ -101,6 +102,14 @@ def _web_url(value: Any) -> str:
     return url
 
 
+def _pct_id(value: Any) -> Optional[int]:
+    """Return a valid Proxmox container id, or None."""
+    if isinstance(value, bool) or not isinstance(value, (int, str)):
+        return None
+    text = str(value)
+    return int(text) if text.isdecimal() and 100 <= int(text) <= 999999999 else None
+
+
 def _endpoints() -> List[dict]:
     """Return validated endpoints; invalid config entries are logged and skipped."""
     raw = _dockge_config()
@@ -118,14 +127,16 @@ def _endpoints() -> List[dict]:
         stacks_dir = str(e.get("stacks_dir") or DEFAULT_STACKS_DIR).rstrip("/")
         host_id = str(e.get("host_id") or "")
         host = find_host_by_id(host_id) if host_id else None
+        pct = _pct_id(e.get("pct"))
         if (not _ENDPOINT_RE.fullmatch(eid) or eid in seen
+                or (e.get("pct") is not None and (pct is None or host is None))
                 or not _DIR_RE.fullmatch(stacks_dir) or ".." in stacks_dir
                 or (host_id and host is None)):
             log.warning("dockge: ignoring invalid endpoint %r", eid)
             continue
         seen.add(eid)
         out.append({"id": eid, "name": str(e.get("name") or eid),
-                    "stacks_dir": stacks_dir, "host": host,
+                    "stacks_dir": stacks_dir, "host": host, "pct": pct,
                     "url": _web_url(e.get("url"))})
     return out
 
@@ -140,6 +151,8 @@ def _find_endpoint(endpoint_id: str) -> Optional[dict]:
 def _run(ep: dict, cmd: str, timeout: int) -> Dict[str, Any]:
     """Run *cmd* on the endpoint; same result shape as ``hosts.ssh_result``."""
     if ep["host"] is not None:
+        if ep.get("pct") is not None:
+            cmd = f"pct exec {ep['pct']} -- sh -c {shlex.quote(cmd)}"
         return hosts.ssh_result(ep["host"], cmd, timeout=timeout)
     try:
         r = subprocess.run(["sh", "-c", cmd], capture_output=True, text=True,

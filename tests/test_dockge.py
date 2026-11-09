@@ -72,6 +72,29 @@ class Listing(Base):
             self.assertFalse(dockge.list_endpoints()[0]["online"])
 
 
+class Container(unittest.TestCase):
+    def test_commands_are_wrapped_in_pct_exec(self) -> None:
+        ep = dict(LOCAL, host={"id": "pve"}, pct=110)
+        with mock.patch.object(dockge.hosts, "ssh_result", return_value=ok()) as ssh:
+            dockge._run(ep, "cd /opt/stacks/web && docker compose stop", 5)
+        self.assertEqual(ssh.call_args.args[1],
+                         "pct exec 110 -- sh -c 'cd /opt/stacks/web && docker compose stop'")
+
+    def test_endpoint_validation(self) -> None:
+        def names(extra: dict) -> list:
+            cfg = {"dockge": {"endpoints": [dict({"id": "ct"}, **extra)]}}
+            with mock.patch.object(dockge, "get_config", return_value=cfg), \
+                    mock.patch.object(dockge, "find_host_by_id", return_value={"id": "pve"}):
+                return [e["pct"] for e in dockge._endpoints()]
+
+        self.assertEqual(names({"host_id": "pve", "pct": 110}), [110])
+        self.assertEqual(names({"host_id": "pve", "pct": "110"}), [110])
+        self.assertEqual(names({"host_id": "pve"}), [None])
+        for bad in ("110; reboot", 5, True, "-1"):
+            self.assertEqual(names({"host_id": "pve", "pct": bad}), [], bad)
+        self.assertEqual(names({"pct": 110}), [])
+
+
 class Actions(Base):
     def run_action(self, stack: str, action: str) -> tuple[dict, int, list]:
         calls: list = []

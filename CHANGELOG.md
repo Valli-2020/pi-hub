@@ -3,6 +3,21 @@
 All notable changes to Pi Hub are documented here. Every release ships a
 changelog entry AND matching GitHub release notes.
 
+## [8.2.1] - 2026-11-09
+
+Dockge stacks inside a Proxmox LXC container can now be listed and controlled.
+
+### Added
+
+- **`pct` on a Dockge endpoint.** With a Proxmox host as `host_id`, Pi Hub runs
+  `docker compose` inside that container through `pct exec`. See
+  `config.example.json`.
+
+### Upgrade notes
+
+Add a `pct` endpoint only after updating to 8.2.1. Version 8.2.0 ignores the
+field and would run Docker on the Proxmox host itself.
+
 ## [8.2.0] - 2026-11-08
 
 Dockge stacks can now be controlled from Pi Hub, on more than one host.
