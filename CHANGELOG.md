@@ -3,6 +3,50 @@
 All notable changes to Pi Hub are documented here. Every release ships a
 changelog entry AND matching GitHub release notes.
 
+## [8.3.1] - 2026-11-14
+
+Upgrading a plugin from the store no longer switches it off, and plugins get
+clickable header pills, links from frames and a data folder that survives
+upgrades.
+
+### Fixed
+
+- **Store upgrades kept plugins disabled.** Installing a new (or the same)
+  version over an enabled plugin removed it from `plugins.json`, so every
+  upgraded plugin had to be enabled again by hand. Now it is enabled and loaded
+  again right after the swap when the new version asks for no new capability;
+  its approval moves to the new version and its frame files are pinned anew. A
+  version that asks for more stays installed and shows as *needs approval*. A
+  disabled plugin stays disabled. A failed swap also re-enables the old version.
+
+### Added
+
+- **Header pills can open a tab:** `Contribution("header.pill", id, provider,
+  opens="<tab id>")` names the plugin's own `tab` contribution or a frame with a
+  `tab` surface. The pill becomes a link (click, Enter or Space). Unknown ids
+  are ignored with a warning when the plugin loads.
+- **`ph.open(url)` for frames:** opens an http(s) link in a new tab with
+  `noopener,noreferrer`. Only absolute http/https URLs up to 2000 characters
+  without user name or password, from a visible frame, one per second. When the
+  browser would block the new tab, an *Open link* dialog shows the URL with a
+  real link and Cancel. The dashboard itself is never navigated.
+- **`ctx.data_dir()`:** `<plugin dir>/data`, created with mode 0700. The store
+  keeps it across upgrades and reinstalls, never extracts `data/` from a
+  tarball and removes it on uninstall.
+
+### Changed
+
+- A `header.pill` provider that returns `None` shows nothing instead of the `!`
+  error chip. Exceptions and invalid nodes still show the chip.
+- PLUGINS.md documents pill `opens`, `ph.open`, `ctx.data_dir()` and what an
+  upgrade does to an enabled plugin.
+
+### Upgrade notes
+
+Plugins that use `opens`, `ph.open` or `data_dir()` need
+`min_core_version = "8.3.1"`. On older cores `opens` is a TypeError at load,
+`ph.open` is undefined and `data_dir` is missing.
+
 ## [8.3.0] - 2026-11-14
 
 Every plugin can now be configured completely in Settings → Plugins → Configure.

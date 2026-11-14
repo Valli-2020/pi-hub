@@ -26,6 +26,7 @@ pi_hub_plugins/
     ├── pihub-plugin.json     # declared capabilities + metadata (recommended)
     ├── helpers.py            # more modules are fine (one sub-package level too)
     ├── config.json           # per-plugin config (auto-created, optional)
+    ├── data/                 # ctx.data_dir(): your persistent files (0700, survives upgrades)
     └── static/               # optional assets; static/frame/ = sandboxed JS (§9)
 ```
 
@@ -148,7 +149,7 @@ def get_contributions(self):
     return [
         Contribution("hosts.card.badges", "latency", self.p_latency, poll=15),
         Contribution("containers.column", "cpu5", self.p_cpu, poll=30, label="CPU 5m avg"),
-        Contribution("header.pill", "flaps", self.p_pill),
+        Contribution("header.pill", "flaps", self.p_pill, opens="overview"),
         Contribution("tab", "overview", self.p_tab, label="Insights", icon_svg="<svg …/>"),
     ]
 
@@ -157,11 +158,11 @@ def p_latency(self, session=None):
     return {"nas": {"type": "badge", "text": "12 ms", "tone": "ok"}}
 
 def p_pill(self, session=None):
-    # singleton slot: one node
+    # singleton slot: one node (None = show nothing right now)
     return {"type": "badge", "text": "stable", "tone": "ok"}
 ```
 
-`Contribution(slot, id, provider=None, poll=30, order=100, caps=None, label="", icon_svg="", static=None)`
+`Contribution(slot, id, provider=None, poll=30, order=100, caps=None, label="", icon_svg="", static=None, opens="")`
 
 - `id`: `[a-z0-9-]{1,32}`, unique within the plugin.
 - `provider(session=None)` returns the payload. It runs on the server in a
@@ -171,6 +172,18 @@ def p_pill(self, session=None):
 - `poll`: client refresh interval in seconds (5–3600; `0` = fetch once).
 - `caps`: who sees it — same semantics as `RouteDef.caps`.
 - `order`: sorts additive slots (then plugin name, then id).
+- `opens` (8.3.1, `header.pill` only): the id of one of **your own** tabs —
+  your `tab` contribution's id, or the id of one of your frames that has a
+  `tab` surface (a `tab` contribution wins if both share the id). Clicking
+  the pill, or Enter/Space when it has focus, switches to that tab; the pill
+  gets `role="link"` and a pointer cursor. An unknown id, another plugin's
+  tab or a frame without a `tab` surface is ignored with a warning in the
+  log, and the pill is not clickable. It is also not clickable while its
+  target is not on screen for this user (`?noframes=1`, Hide UI, a blocked
+  frame).
+- A `header.pill` provider that returns `None` renders nothing (8.3.1); an
+  exception or an invalid node still shows the `!` chip. Other slots still
+  treat `None` as an invalid payload.
 
 ### Slots
 
@@ -438,11 +451,19 @@ capability raises `PermissionError`.
 | `set_task_status` / `get_task_status` | — | Task progress |
 | `toast(message, kind)` | — | Toast in every connected admin UI |
 | `get_config()` / `save_config()` | — | Your `config.json` |
+| `data_dir()` | — | Absolute path of `<plugin dir>/data`, created 0700 on first call (8.3.1) |
 | `register_static(url_path, file_path)` | — | Serve a file from `static/` (`/plugin-static/<name>/…`, auth required) |
 | `request_restart(tag)` | — | Ask the core to restart |
 
 Never `import pi_hub.config` or reach into core internals — that bypasses the
 capability boundary.
+
+**Persistent data.** Keep caches, history and other files your plugin writes
+in `ctx.data_dir()`, not next to your code: the store keeps `data/` (like
+`config.json`) when it upgrades or reinstalls the plugin, never extracts
+anything under `data/` from a release tarball, and deletes it on uninstall.
+Plugins that need to run on cores older than 8.3.1 can fall back to their
+own directory when `ctx` has no `data_dir`.
 
 ---
 
@@ -454,7 +475,8 @@ canvas chart, a live log — ship it as a **frame**. It runs in
 opaque origin that cannot read the dashboard's `localStorage` (where the
 admin token lives) or cookies, cannot make network requests
 (`connect-src 'none'`), cannot navigate the page, open popups or submit
-forms. It talks to the dashboard only through a validated message bridge.
+forms. It talks to the dashboard only through a validated message bridge
+(links go through `ph.open`, below).
 
 ```python
 from pi_hub.plugins.base import FrameDef
@@ -483,7 +505,22 @@ ph.render('hosts.card.badges', 'nas', { type: 'badge', text: '12 ms', tone: 'ok'
 ph.on('theme', t => …); ph.on('visible', v => …); ph.on('refresh', () => …);
 ph.theme;  ph.user.role;  ph.surface;             // 'tab' | 'widget' | 'settings'
 ph.toast('done', 'ok');  ph.resize(300);  ph.asset('logo.svg');   // asset → data: URL
+ph.open('https://example.local/flight/abc').then(r => …);         // 8.3.1: {ok: true} | {ok: false, error}
 ```
+
+**Opening links (8.3.1).** The frame itself cannot open popups or navigate
+the page; `ph.open(url)` asks the dashboard to open a link in a **new tab**
+(never in the dashboard's own tab). It works for every frame, no extra
+capability. The dashboard accepts only absolute `http:`/`https:` URLs of at
+most 2000 characters with no user name or password, from a frame that is
+currently visible, at most one per second per frame. Call it from a click
+handler: the click's user activation reaches the dashboard, which then opens
+the link with `noopener,noreferrer`. Without a recent click (the browser
+would block the popup) the dashboard shows an **Open link** dialog with the
+full URL, a real link and Cancel. The promise always resolves: `{ok: true}`
+means the tab was opened or the dialog is showing; `{ok: false, error}`
+means it was refused (bad URL, frame hidden, rate limited, a dialog already
+open). A refused URL is not counted as a misbehaviour.
 
 - The bridge sets CSS variables (`var(--accent)`, …) and `data-theme` so the
   frame matches the dashboard and follows the light/dark switch.
@@ -573,11 +610,23 @@ client never supplies URLs). Install downloads the tarball and extracts
 swaps it in atomically. Installed ≠ enabled: the admin clicks Enable and
 approves the declared capabilities (§7).
 
+**Upgrades and reinstalls (8.3.1).** Installing a version over an installed
+plugin keeps its `config.json` and `data/`. A plugin that was **enabled**
+is enabled and loaded again right after the swap when the new version
+declares no capability beyond what the admin already approved; its grant
+moves to the new version and its frame files are pinned anew (the admin
+chose the upgrade). A version that declares more stays installed but not
+enabled and shows as **needs approval** in Settings → Plugins until the
+admin approves it. A disabled plugin stays disabled; other plugins in
+`plugins.json` are never touched. Installing over a same-named plugin from
+another source leaves it disabled with no inherited approval.
+
 Extracted: top-level `__init__.py`, `config.json`, `pihub-plugin.json`,
 `README.md`, `LICENSE`, any `<identifier>.py` module, `<package>/<module>.py`
 (one level), and `static/**` (`static/frame/**` only `.js .css .svg .png
 .json .woff2`, ≤ 512 KB per file, ≤ 2 MB per frame). Never extracted:
-dotfiles, `__pycache__`, `*.pyc`, links, anything else; at most 300 files.
+dotfiles, `__pycache__`, `*.pyc`, links, anything under `data/`, anything
+else; at most 300 files.
 
 Rules: **one release = one plugin version** (semver tags), both assets in the
 same release, delete superseded releases, and keep `min_core_version`

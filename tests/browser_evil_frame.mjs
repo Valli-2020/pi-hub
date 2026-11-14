@@ -60,6 +60,8 @@ console.log('attack frame');
   check('the listener received NO request from the frame (fetch, XHR, beacon, img, script, css, iframe, form, worker, ws, prefetch)', hits.length === 0, JSON.stringify(hits));
   for (const [k, v] of Object.entries(res || {})) console.log('        ' + k.padEnd(38) + v);
   check('dashboard still on the same URL', new URL(page.url()).pathname === '/' && !page.url().includes('pwned'), page.url());
+  check('ph.open opened no tab', ctx.pages().length === 1, String(ctx.pages().length));
+  check('ph.open showed no link dialog', (await page.locator('#phopen[open]').count()) === 0);
   check('token untouched in dashboard localStorage', (await page.evaluate(() => localStorage.getItem('pi_hub_token'))) === token);
   check('no code ran in the dashboard (window.__pwned)', (await page.evaluate(() => window.__pwned)) === undefined);
   check('no injected <img> in the dashboard', (await page.locator('img[src="x"]').count()) === 0);

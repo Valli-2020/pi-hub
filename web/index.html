@@ -438,6 +438,11 @@
 
   /* ── Plugin form / Configure dialog ────────────────────────────────── */
   dialog.pfdlg { max-width:620px; }
+  /* Link a plugin frame asked to open (popup blocked) */
+  .po-url { display:block; margin:0 0 4px; padding:9px 11px; border:1px solid var(--border); border-radius:var(--radius-sm);
+            background:var(--surface-2); font:12.5px/1.5 var(--mono); color:var(--text); overflow-wrap:anywhere;
+            max-height:9.5em; overflow:auto; }
+  #phopen .btn-row a.btn { text-decoration:none; }
   #pf-fields { max-height:calc(100dvh - 210px); overflow:auto; overscroll-behavior:contain;
                margin:0 -22px; padding:0 22px; }
   #pf-fields .pf-note { margin:4px 0 10px; }
@@ -706,6 +711,10 @@
   .btn-bad-solid:hover:not(:disabled) { filter:brightness(1.12); }
   /* ── Plugin API v2 (contributions) ───────────────────────────────────── */
   .ph-slot, .ph-c { display:contents; }
+  .ph-c[data-phopen] { display:inline-flex; align-items:center; cursor:pointer; border-radius:99px; }
+  .ph-c[data-phopen] * { cursor:pointer; }
+  .ph-c[data-phopen]:hover .ph-badge { border-color:var(--border-strong); color:var(--text); }
+  .ph-c[data-phopen]:focus-visible { outline:none; box-shadow:var(--ring); }
   table.ph-tbl { table-layout:auto; }
   table.ph-tbl td { overflow-wrap:break-word; }
   table.ph-tbl td.actions { width:1%; white-space:nowrap; }
@@ -1040,6 +1049,18 @@
     <div class="btn-row">
       <button class="btn btn-quiet" value="cancel" id="cf-no">Cancel</button>
       <button class="btn btn-primary" value="ok" id="cf-yes">Continue</button>
+    </div>
+  </div>
+</dialog>
+
+<dialog id="phopen" aria-labelledby="po-title">
+  <div class="dlg">
+    <h3 id="po-title">Open link</h3>
+    <p id="po-sub"></p>
+    <code class="po-url" id="po-url"></code>
+    <div class="btn-row">
+      <button class="btn btn-quiet" id="po-cancel">Cancel</button>
+      <a class="btn btn-primary" id="po-link" target="_blank" rel="noopener noreferrer" referrerpolicy="no-referrer">Open in new tab</a>
     </div>
   </div>
 </dialog>
@@ -2766,8 +2787,33 @@ const PH = (function(){
     const inner = rnode(node, { cid: c.id, plugin: c.plugin, key: key, n: { i: 0 } }, 0);
     if (slotName === 'settings.card')
       return '<div class="setcard plg-' + cls(c.plugin) + '" data-cid="' + esc(c.id) + '"><h3 class="group">' + esc(c.label || c.plugin) + '</h3>' + inner + '</div>';
+    const target = slotName === 'header.pill' ? opensView(c) : '';
+    if (target)
+      return '<span class="ph-c plg-' + cls(c.plugin) + '" role="link" tabindex="0" data-phopen="' + esc(target) + '">' + inner + '</span>';
     return '<span class="ph-c plg-' + cls(c.plugin) + '">' + inner + '</span>';
   }
+  // The view a pill's `opens` points at, if that tab is on screen for this user.
+  function opensView(c){
+    const o = c.opens;
+    if (!o || typeof o.id !== 'string') return '';
+    const vid = o.kind === 'tab' ? 'ph-' + c.plugin + '--' + o.id
+              : o.kind === 'frame' ? 'phf-' + (c.plugin + '--' + o.id).replace(/[^A-Za-z0-9_-]/g, '-') : '';
+    return vid && $('.view[data-view="' + CSS.escape(vid) + '"]') ? vid : '';
+  }
+  function followPill(el){
+    const vid = el.dataset.phopen;
+    if (vid && $('.view[data-view="' + CSS.escape(vid) + '"]')) showView(vid);
+  }
+  // A link or button inside the pill keeps its own behaviour.
+  document.addEventListener('click', e => {
+    const el = e.target.closest('[data-phopen]');
+    if (el && !e.target.closest('a, button')) followPill(el);
+  });
+  document.addEventListener('keydown', e => {
+    if ((e.key !== 'Enter' && e.key !== ' ') || !e.target.matches || !e.target.matches('[data-phopen]')) return;
+    e.preventDefault();
+    followPill(e.target);
+  });
   function paintSlot(el){
     const name = el.dataset.slot, key = el.dataset.key || '', only = el.dataset.cid;
     let list = st.byslot[name] || [];
@@ -3270,6 +3316,42 @@ const PHF = (function(){
     finally { inst.inflight--; }
   }
 
+  /* ── Links (ph.open) ─────────────────────────────────────────────────────
+     A frame may ask for an http(s) link to be opened in a NEW tab — never in
+     this one.  With the click that triggered it still active (user activation
+     reaches us from the frame) we call window.open; with 'noopener' it always
+     returns null, so the activation check is what tells a blocked popup apart.
+     Without activation the user gets a dialog with a real link instead. */
+  const MAX_URL = 2000;
+  function linkUrl(v){
+    if (typeof v !== 'string' || !v || v.length > MAX_URL) return '';
+    let u;
+    try { u = new URL(v); } catch (e) { return ''; }       // no base: relative URLs throw
+    if ((u.protocol !== 'http:' && u.protocol !== 'https:') || u.username || u.password || !u.hostname) return '';
+    return u.href.length <= MAX_URL ? u.href : '';
+  }
+  function openLink(inst, m){
+    const reply = d => post(inst, { op: 'result', id: m.id, ok: true, data: d });
+    const href = linkUrl(m.url);
+    if (!href) return reply({ ok: false, error: 'only absolute http(s) URLs without credentials, up to 2000 characters' });
+    if (!inst.visible) return reply({ ok: false, error: 'frame is not visible' });
+    if ($('#phopen').open) return reply({ ok: false, error: 'another link is waiting in the dialog' });
+    if (!inst.openOk()) return reply({ ok: false, error: 'rate limited' });
+    const ua = navigator.userActivation;
+    if (ua && ua.isActive) window.open(href, '_blank', 'noopener,noreferrer');
+    else askOpen(inst, href);
+    reply({ ok: true });
+  }
+  function askOpen(inst, href){
+    $('#po-sub').textContent = 'The plugin ' + inst.plugin + ' wants to open this link. The browser blocked the new tab, so open it from here:';
+    $('#po-url').textContent = href;
+    $('#po-link').setAttribute('href', href);
+    $('#phopen').showModal();
+  }
+  $('#po-cancel').addEventListener('click', () => $('#phopen').close());
+  $('#po-link').addEventListener('click', () => setTimeout(() => $('#phopen').close(), 0));
+  $('#phopen').addEventListener('close', () => $('#po-link').removeAttribute('href'));
+
   function onMessage(inst, m){
     if (!inst.iframe) return;
     if (!isObj(m) || typeof m.op !== 'string') return violate(inst, 'malformed message');
@@ -3294,6 +3376,10 @@ const PHF = (function(){
         toast(inst.plugin + ': ' + msg, m.kind === 'err' ? 'err' : m.kind === 'ok' ? 'ok' : 'info');
         return;
       }
+      case 'open':
+        if (!Number.isInteger(m.id) || m.id < 1) return violate(inst, 'bad id');
+        openLink(inst, m);
+        return;
       case 'render': {
         if (!inst.renderOk(m.slot)) return violate(inst, 'render flood');
         let r;
@@ -3391,7 +3477,7 @@ const PHF = (function(){
     const inst = { key: surfKey(fr, sf), plugin: fr.plugin, fid: fr.id, type: sf.type, spec: fr, label: sf.label || fr.plugin,
                    view: '', box: null, iframe: null, port: null, token: '', visible: false, hiddenSince: 0, viol: [], missed: 0,
                    inflight: 0, mounting: false, ready: false, mountedAt: 0,
-                   callOk: bucket(10, 20), toastOk: bucket(0.2, 1), renders: new Map() };
+                   callOk: bucket(10, 20), toastOk: bucket(0.2, 1), openOk: bucket(1, 1), renders: new Map() };
     inst.renderOk = slot => { let b = inst.renders.get(slot); if (!b) inst.renders.set(slot, b = bucket(5, 10)); return b(); };
     if (sf.type === 'tab') {
       const vid = tabId(fr); inst.view = vid;
@@ -3460,7 +3546,7 @@ const PHF = (function(){
   });
 
   return { sync, onView, broadcastTheme, _cleanNode: cleanNode, _cleanRender: cleanRender, _insts: insts,
-           _create: create, _onMessage: onMessage };
+           _create: create, _onMessage: onMessage, _linkUrl: linkUrl };
 })();
 
 /* ── Permission descriptions (consent dialog) ──────────────────────────── */

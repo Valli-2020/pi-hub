@@ -25,6 +25,9 @@ import time
 from copy import deepcopy as _deepcopy
 from typing import Any, Callable, Dict, List, Optional
 
+#: Name of the per-plugin data directory (see :meth:`PluginContext.data_dir`).
+DATA_DIR = "data"
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # Declarative descriptors (for get_routes / get_tasks / get_ui)
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -90,10 +93,15 @@ class Contribution:
     restricts who sees it, with the same semantics as :class:`RouteDef`.
     ``label`` / ``icon_svg`` are used by ``tab`` and ``settings.card``
     (card title) and ``containers.column`` (column header).
+
+    ``opens`` (``header.pill`` only, 8.3.1) names one of the same plugin's
+    tabs: the id of its ``tab`` contribution or of a frame with a ``tab``
+    surface.  Clicking the pill switches to that tab.  An unknown id is
+    ignored with a warning at load time.
     """
 
     __slots__ = ("slot", "id", "provider", "poll", "order", "caps",
-                 "label", "icon_svg", "static")
+                 "label", "icon_svg", "static", "opens")
 
     def __init__(
         self,
@@ -106,6 +114,7 @@ class Contribution:
         label: str = "",
         icon_svg: str = "",
         static: Any = None,
+        opens: str = "",
     ):
         self.slot = slot
         self.id = id
@@ -116,6 +125,7 @@ class Contribution:
         self.label = label
         self.icon_svg = icon_svg
         self.static = static
+        self.opens = opens
 
 
 class FrameDef:
@@ -445,6 +455,23 @@ class PluginContext:
     def capabilities(self) -> frozenset:
         """The capabilities actually granted to this plugin."""
         return frozenset(self._caps)
+
+    def data_dir(self) -> str:
+        """Absolute path of the plugin's persistent data directory,
+        ``<plugin dir>/data``, created with mode 0700 on first use.
+
+        The store keeps it across upgrades and reinstalls (like
+        ``config.json``), never fills it from a release tarball and
+        removes it on uninstall."""
+        self._check_alive()
+        path = os.path.join(self._plugin_dir, DATA_DIR)
+        try:
+            os.mkdir(path, 0o700)
+            os.chmod(path, 0o700)               # mkdir's mode is masked by the umask
+        except FileExistsError:
+            if not os.path.isdir(path) or os.path.islink(path):
+                raise RuntimeError(f"{path} exists and is not a directory")
+        return path
 
     # ── System reads (capability-gated) ────────────────────────────────────
 

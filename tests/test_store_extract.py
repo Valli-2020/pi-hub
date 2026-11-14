@@ -67,6 +67,14 @@ err, got = extract({"__init__.py": "", ".env": "SECRET=1", ".git/config": "", "_
                     "static/.hidden.js": "", "static/ok.js": ""})
 check("dotfiles, __pycache__ and .pyc never extract", err is None and got == ["__init__.py", "static/ok.js"], str((err, got)))
 
+print("plugin data")
+err, got = extract({"__init__.py": "", "data/history.json": "{}", "data/x.py": "", "data/sub/deep.png": "x",
+                    "data.py": "", "static/data/ok.txt": ""})
+check("nothing under data/ extracts (data.py and static/data/ do)",
+      err is None and got == ["__init__.py", "data.py", "static/data/ok.txt"], str((err, got)))
+err, got = extract({"__init__.py": "", "data/x.py": ""}, prefix="pi_hub_plugins/myplug/")
+check("data/ skipped in the pi_hub_plugins/<name>/ layout too", err is None and got == ["__init__.py"], str((err, got)))
+
 print("frame assets")
 err, got = extract({"__init__.py": "", "static/frame/main.js": "1", "static/frame/a.css": "", "static/frame/i.svg": "<svg/>",
                     "static/frame/p.png": "x", "static/frame/d.json": "{}", "static/frame/f.woff2": "x", "static/frame/sub/x.js": ""})
@@ -103,7 +111,8 @@ check("absolute member paths are not written", err is not None or got == [], str
 
 print("classifier")
 for rel, want in [("__init__.py", True), ("a.py", True), ("a/b.py", True), ("a/b/c.py", False), ("static/a/b/c.txt", True),
-                  ("static/frame/a.html", None), ("x.txt", False), (".x.py", False), ("a/.b.py", False), ("Makefile", False)]:
+                  ("static/frame/a.html", None), ("x.txt", False), (".x.py", False), ("a/.b.py", False), ("Makefile", False),
+                  ("data/a.py", False), ("data/__init__.py", False), ("data/x.json", False), ("data", False)]:
     ok, e, _ = store._classify(rel)
     check("classify %s" % rel, (want is None and e is not None) or (want is not None and ok == want and e is None), str((ok, e)))
 

@@ -209,7 +209,7 @@ def caps_allowed(caps: List[str], session: dict | None) -> bool:
 
 class _LoadedContribution:
     __slots__ = ("c", "plugin", "cid", "meta", "static", "granted",
-                 "errors", "next_ok", "cache")
+                 "errors", "next_ok", "cache", "opens")
 
     def __init__(self, c: Contribution, plugin: str, meta: dict, static: Any,
                  granted: bool):
@@ -222,6 +222,7 @@ class _LoadedContribution:
         self.errors = 0
         self.next_ok = 0.0
         self.cache: Dict[str, Tuple[float, dict]] = {}
+        self.opens: Optional[Dict[str, str]] = None   # resolved header.pill target
 
     @property
     def poll(self) -> int:
@@ -514,6 +515,22 @@ class PluginManager:
         self._bump()
         return True, "approved"
 
+    def mark_needs_approval(self, name: str, status: Dict[str, Any]) -> None:
+        """List an installed, not loaded plugin as waiting for approval
+        (*status* from :meth:`approval_status`)."""
+        self._failed[name] = {"status": "needs_approval", "pending": status["pending"],
+                              "declared": status["declared"],
+                              "error": "waiting for approval: " + ", ".join(status["pending"])}
+        self._bump()
+
+    def clear_frame_pins(self, name: str) -> None:
+        """Drop the frame digests pinned for *name*; the next load pins the
+        files it finds.  Used when the admin installed new files on purpose."""
+        with self._state_lock:
+            g = self._grant_of(name)
+            if g.pop("frames", None):
+                self._save_state()
+
     def forget(self, name: str) -> None:
         """Drop grants of an uninstalled plugin."""
         with self._state_lock:
@@ -701,6 +718,7 @@ class PluginManager:
             loaded.granted = sorted(actual)
             self._collect_contributions(name, loaded, actual)
             self._collect_frames(name, loaded, actual, plugin_dir)
+            self._resolve_opens(name, loaded)
             loaded.config_schema = contrib.validate_config_schema(plugin.get_config_schema())
         except Exception as e:
             ctx.unload()
@@ -784,6 +802,31 @@ class PluginManager:
             if not granted:
                 loaded.denied.append(f"{c.slot}:{c.id} (needs {need})")
             loaded.contribs.append(_LoadedContribution(c, name, meta, static, granted))
+
+    @staticmethod
+    def _resolve_opens(name: str, loaded: _LoadedPlugin) -> None:
+        """Check each pill's ``opens`` against the plugin's own tabs: a
+        ``tab`` contribution id first, then a frame with a ``tab`` surface.
+        Anything else is ignored with a warning (the pill is not clickable)."""
+        tabs = {lc.c.id for lc in loaded.contribs if lc.c.slot == "tab"}
+        frames = {fid for fid, lf in loaded.frames.items()
+                  if any(sf["type"] == "tab" for sf in lf.spec["surfaces"])}
+        for lc in loaded.contribs:
+            want = lc.c.opens
+            if not want:
+                continue
+            if lc.c.slot != "header.pill":
+                print(f"PluginManager: '{name}': {lc.c.slot} {lc.c.id!r} sets opens — "
+                      "only header.pill can open a tab, ignored")
+            elif not isinstance(want, str):
+                print(f"PluginManager: '{name}': header.pill {lc.c.id!r} opens must be a string — ignored")
+            elif want in tabs:
+                lc.opens = {"kind": "tab", "id": want}
+            elif want in frames:
+                lc.opens = {"kind": "frame", "id": want}
+            else:
+                print(f"PluginManager: '{name}': header.pill {lc.c.id!r} opens unknown tab "
+                      f"{want!r} — ignored")
 
     #: slots a frame may feed through ph.render → the ui.* capability they need
     @staticmethod
@@ -1091,6 +1134,7 @@ class PluginManager:
                     "poll": lc.poll, "order": lc.c.order,
                     "label": str(lc.c.label or "")[:80],
                     "icon_svg": lc.c.icon_svg if slot == "tab" else "",
+                    "opens": lc.opens,
                 })
         out["contribs"].sort(key=lambda c: (c["order"], c["plugin"], c["id"]))
         out["frames"] = self.frames_manifest(session)
@@ -1113,6 +1157,8 @@ class PluginManager:
     def _run_provider(self, lc: _LoadedContribution, session: dict | None) -> dict:
         """Call a provider and validate its result (raises on any problem)."""
         raw = _call_filtered(lc.c.provider, session=session)
+        if raw is None and lc.c.slot == "header.pill":
+            return {"keyed": False, "node": None}      # nothing to show right now
         if lc.meta.get("keyed"):
             return {"keyed": True, "nodes": contrib.validate_keyed(raw)}
         return {"keyed": False, "node": contrib.validate_node(raw)}

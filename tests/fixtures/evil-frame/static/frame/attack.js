@@ -58,6 +58,17 @@
   attempt('bridge: undeclared read', function () { return ph.read('proxmox.containers'); });
   attempt('bridge: config read', function () { return ph.read('config.full'); });
   attempt('bridge: other plugin', function () { return ph.call('../other/x'); });
+  // ph.open must refuse everything that is not an absolute http(s) URL without
+  // credentials; a refusal resolves {ok:false}, which counts as blocked here.
+  [['javascript:', 'javascript:window.top.__pwned=1'], ['JavaScript: mixed case', 'JaVaScRiPt:window.top.__pwned=1'],
+   ['javascript: tab inside', 'java\tscript:window.top.__pwned=1'], ['data:', 'data:text/html,<script>alert(1)<\/script>'],
+   ['file:', 'file:///etc/passwd'], ['relative', '/api/config/full'], ['dot-relative', '../x'], ['protocol-relative', '//example.local/x'],
+   ['credentials', 'https://user:pw@example.local/'], ['username only', 'https://user@example.local/'],
+   ['too long', 'https://example.local/' + new Array(2100).join('a')]].forEach(function (c) {
+    attempt('ph.open ' + c[0], function () {
+      return ph.open(c[1]).then(function (r) { if (r && r.ok) return 'ESCAPED'; throw new Error((r && r.error) || 'refused'); });
+    });
+  });
   }).then(function () {
     return Promise.all(jobs);
   }).then(function () {

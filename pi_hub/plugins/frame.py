@@ -313,6 +313,13 @@ var ph = {
   on: function(name, cb){ if (listeners[name] && typeof cb === 'function') listeners[name].push(cb); },
   resize: function(h){ send({ op: 'resize', h: +h || 0 }); },
   toast: function(msg, kind){ send({ op: 'toast', msg: String(msg), kind: String(kind || 'info') }); },
+  // Asks the dashboard to open an http(s) link in a new tab.  Always resolves.
+  open: function(url){
+    try { url = String(url); } catch (e) { return Promise.resolve({ ok: false, error: 'bad url' }); }
+    return request('open', { url: url }).then(function(d){
+      return d && d.ok === true ? { ok: true } : { ok: false, error: String((d && d.error) || 'refused') };
+    }, function(e){ return { ok: false, error: String((e && e.message) || 'failed') }; });
+  },
   asset: function(path){ return Object.prototype.hasOwnProperty.call(assets, path) ? assets[path] : null; },
   get theme(){ return state.theme; },
   get user(){ return { role: state.role }; },

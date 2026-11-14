@@ -35,6 +35,8 @@ import urllib.parse
 import urllib.request
 from typing import Any, Dict, List, Optional, Tuple
 
+from pi_hub.plugins.base import DATA_DIR
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # Paths & constants
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -71,7 +73,8 @@ UA = "pi-hub-plugin-store/7.2"
 #   static/**   assets served by /plugin-static/; static/frame/** is what a
 #               sandboxed frame may load, so it is limited to inert file
 #               types (no .html/.svgz/.wasm) and to a size budget.
-# Dotfiles, __pycache__ and *.pyc never extract.
+# Dotfiles, __pycache__ and *.pyc never extract, and neither does anything
+# under data/ (the plugin's own persistent data, ctx.data_dir()).
 _ALLOWED = {
     "__init__.py",
     "config.json",
@@ -96,6 +99,8 @@ def _classify(rel: str) -> Tuple[bool, str | None, str]:
     """
     parts = rel.split("/")
     if any(p.startswith(".") for p in parts) or "__pycache__" in parts or rel.endswith(".pyc"):
+        return False, None, ""
+    if parts[0] == DATA_DIR:
         return False, None, ""
     if rel in _ALLOWED:
         return True, None, ""
@@ -696,7 +701,8 @@ def install(source_id: str, name: str, version: str) -> Tuple[bool, str]:
     ``(source_id, name, version)`` must match an entry in the source's
     scan cache; the tarball URL is resolved server-side.  An existing
     install of the same name is replaced (upgrade path): disable → swap
-    dir → (optionally re-enable by the caller).
+    dir (``config.json`` and ``data/`` carried over) → enable again if it
+    was enabled and the new version asks for no new capability.
     """
     with _install_lock:
         return _install_locked(source_id, name, version)
@@ -789,6 +795,7 @@ def _install_locked(source_id: str, name: str, version: str) -> Tuple[bool, str]
     #    path: disable old, park it, replace with the staged tree).
     parked = None
     cfg_data = None
+    was_enabled = name in _read_manifest()
     if os.path.isdir(target_dir):
         ok, why = disable(name)
         if not ok:
@@ -807,6 +814,8 @@ def _install_locked(source_id: str, name: str, version: str) -> Tuple[bool, str]
             os.replace(target_dir, parked)
         except OSError:
             shutil.rmtree(staging, ignore_errors=True)
+            if was_enabled:
+                enable(name)              # the old version is still in place
             return False, "could not park old plugin version"
         cfg_data = None
         cfg_path = os.path.join(parked, "config.json")
@@ -822,6 +831,8 @@ def _install_locked(source_id: str, name: str, version: str) -> Tuple[bool, str]
         if parked and os.path.isdir(parked) and not os.path.isdir(target_dir):
             try:
                 os.replace(parked, target_dir)
+                if was_enabled:
+                    enable(name)
             except OSError:
                 pass
         shutil.rmtree(staging, ignore_errors=True)
@@ -832,8 +843,18 @@ def _install_locked(source_id: str, name: str, version: str) -> Tuple[bool, str]
                 f.write(cfg_data)
         except OSError:
             pass                      # best-effort: the update itself succeeded
+    data_note = ""
     if parked:
-        shutil.rmtree(parked, ignore_errors=True)
+        # The plugin's data/ moves over with a rename (the staged tree never
+        # has one: _classify skips data/).  If that fails the park stays on
+        # disk rather than deleting the data with it.
+        old_data = os.path.join(parked, DATA_DIR)
+        try:
+            if os.path.isdir(old_data) and not os.path.islink(old_data):
+                os.replace(old_data, os.path.join(target_dir, DATA_DIR))
+            shutil.rmtree(parked, ignore_errors=True)
+        except OSError:
+            data_note = f"; could not move data/, the previous files are kept in {os.path.basename(parked)}"
 
     # Mark the EXACT cached candidate as installed (multiple versions of
     # the same plugin can coexist in the cache — never flag them all).
@@ -856,7 +877,32 @@ def _install_locked(source_id: str, name: str, version: str) -> Tuple[bool, str]
             get_manager().forget(name)
         except Exception:
             pass
-    return True, f"plugin '{name}' v{version} installed"
+    msg = f"plugin '{name}' v{version} installed"
+    if was_enabled:
+        msg += _reenable_after_upgrade(name) if inherits else \
+            "; left disabled: it replaced a plugin from another source, enable it to review its access"
+    return True, msg + data_note
+
+
+def _reenable_after_upgrade(name: str) -> str:
+    """Bring a plugin that was enabled before its upgrade back up.
+
+    The admin chose the upgrade, so when the new version declares no
+    capability beyond the current grant it is enabled and loaded again,
+    and its frame pins are re-recorded from the new files.  A version that
+    asks for more stays disabled and is listed as waiting for approval.
+    Returns a suffix for the install message."""
+    from pi_hub.plugins import get_manager
+    mgr = get_manager()
+    st = mgr.approval_status(name)
+    if not st["known"]:
+        return "; left disabled: its capabilities cannot be read"
+    if st["pending"]:
+        mgr.mark_needs_approval(name, st)
+        return "; left disabled until you approve: " + ", ".join(st["pending"])
+    mgr.clear_frame_pins(name)
+    ok, why = enable(name)
+    return "; enabled again" if ok else "; could not enable it again: " + why
 
 
 def uninstall(name: str) -> Tuple[bool, str]:
