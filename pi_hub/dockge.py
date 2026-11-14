@@ -7,7 +7,7 @@ show up there as well.
 
 Endpoints come from ``dockge.endpoints`` in config.json::
 
-    {"id": "pi",  "name": "Pi",  "stacks_dir": "/opt/stacks", "url": "http://192.168.1.10:5001"}
+    {"id": "pi",  "name": "Pi",  "stacks_dir": "/opt/stacks", "url": "http://192.0.2.10:5001"}
     {"id": "vps", "name": "VPS", "host_id": "vps", "url": "https://dockge.example.com"}
 
 Without ``host_id`` the endpoint is this machine.  ``pct`` (with a Proxmox host

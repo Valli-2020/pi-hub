@@ -52,7 +52,7 @@
   },
   "dockge": {
     "endpoints": [
-      { "id": "local", "name": "This host", "stacks_dir": "/opt/stacks", "url": "http://192.168.1.10:5001" },
+      { "id": "local", "name": "This host", "stacks_dir": "/opt/stacks", "url": "http://192.0.2.10:5001" },
       { "id": "remote", "name": "Remote host", "host_id": "test-pc-linux", "stacks_dir": "/opt/stacks" },
       { "id": "lxc", "name": "Proxmox container", "host_id": "test-pc-linux", "pct": 101, "stacks_dir": "/opt/stacks" }
     ]
