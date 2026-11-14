@@ -837,12 +837,17 @@ def _install_locked(source_id: str, name: str, version: str) -> Tuple[bool, str]
                 pass
         shutil.rmtree(staging, ignore_errors=True)
         return False, "could not move plugin into place"
+    cfg_out = os.path.join(target_dir, "config.json")
     if cfg_data is not None:
         try:
-            with open(os.path.join(target_dir, "config.json"), "wb") as f:
+            with open(cfg_out, "wb") as f:
                 f.write(cfg_data)
         except OSError:
             pass                      # best-effort: the update itself succeeded
+    try:
+        os.chmod(cfg_out, 0o600)      # plugin configs may hold API keys
+    except OSError:
+        pass
     data_note = ""
     if parked:
         # The plugin's data/ moves over with a rename (the staged tree never

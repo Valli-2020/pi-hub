@@ -195,6 +195,8 @@ check("nothing from the tarball's data/ was extracted",
 check("data/ keeps mode 0700", stat.S_IMODE(os.stat(os.path.join(ROOT, "beta", "data")).st_mode) == 0o700)
 with open(os.path.join(ROOT, "beta", "config.json")) as f:
     check("config.json survives the upgrade", f.read() == '{"k": "v"}')
+check("config.json is 0600 after the upgrade",
+      stat.S_IMODE(os.stat(os.path.join(ROOT, "beta", "config.json")).st_mode) == 0o600)
 check("no park directory left behind", not os.path.exists(os.path.join(ROOT, "beta.old")))
 check("beta is running 1.2.0 with the same data dir",
       m._plugins["beta"].plugin.version == "1.2.0" and m._plugins["beta"].ctx.data_dir() == d)

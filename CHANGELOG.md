@@ -18,6 +18,8 @@ upgrades.
   its approval moves to the new version and its frame files are pinned anew. A
   version that asks for more stays installed and shows as *needs approval*. A
   disabled plugin stays disabled. A failed swap also re-enables the old version.
+- **Plugin `config.json` stays private on upgrade.** The store wrote it back
+  with mode 0644 after an upgrade; it is now 0600, since it can hold API keys.
 
 ### Added
 
