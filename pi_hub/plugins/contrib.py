@@ -31,7 +31,11 @@ MAX_CSS_BYTES = 32 * 1024
 
 TONES = ("ok", "warn", "bad", "muted", "accent", "info")
 STATES = ("ok", "warn", "bad", "off", "unknown")
-FIELD_TYPES = ("text", "password", "number", "checkbox", "select")
+FIELD_TYPES = ("text", "password", "number", "checkbox", "select", "url", "textarea")
+#: Config schema types: the form types plus ``list`` (rows of sub-fields).
+CONFIG_FIELD_TYPES = FIELD_TYPES + ("list",)
+#: Column types allowed inside a ``list`` field.
+LIST_SUBFIELD_TYPES = ("text", "url", "number", "checkbox", "select")
 
 #: Per-slot metadata.  ``keyed`` slots return ``{key: node}`` (one node per
 #: host / service / container ...), singleton slots return one node.
@@ -460,40 +464,156 @@ def validate_static(slot: str, data: Any, plugin: str) -> dict:
 # Config schema
 # ═══════════════════════════════════════════════════════════════════════════════
 
+MAX_SCHEMA_FIELDS = 60
+MAX_LIST_SUBFIELDS = 8
+DEFAULT_LIST_ITEMS = 50
+MAX_LIST_ITEMS = 100
+MAX_TEXT = 2000
+MAX_TEXTAREA = 8000
+_FIELD_NAME_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]{0,63}")
+_URL_RE = re.compile(r"^https?://[^\s/?#]+", re.I)
+_SECRET_KEY_RE = re.compile(r"key|token|secret|password|passwd", re.I)
+_SKIP = object()          # "leave this key out" marker for the per-type coercion
+
+
+def _schema_field(f: Any, sub: bool = False) -> Optional[dict]:
+    """Normalise one schema field; None when it is unusable.
+
+    ``sub=True`` applies the stricter rules for the columns of a ``list``
+    field: no secrets, no nesting, no section."""
+    if not isinstance(f, dict):
+        return None
+    name = f.get("name")
+    if not isinstance(name, str) or not _FIELD_NAME_RE.fullmatch(name):
+        return None
+    ftype = f.get("type", "text")
+    if ftype not in CONFIG_FIELD_TYPES:
+        ftype = "text"
+    if sub and (ftype not in LIST_SUBFIELD_TYPES or f.get("secret")):
+        return None
+    item: Dict[str, Any] = {
+        "name": name, "type": ftype,
+        "label": str(f.get("label") or name)[:120],
+        "help": str(f.get("help") or "")[:300],
+        "placeholder": str(f.get("placeholder") or "")[:120],
+        "required": bool(f.get("required")),
+        "secret": ftype == "password" or (ftype != "list" and bool(f.get("secret"))),
+        "default": f.get("default") if isinstance(f.get("default"), (str, int, float, bool)) else None,
+    }
+    if not sub:
+        item["section"] = str(f.get("section") or "")[:60]
+    if ftype == "number":
+        for k in ("min", "max"):
+            if isinstance(f.get(k), (int, float)) and not isinstance(f.get(k), bool):
+                item[k] = f[k]
+    if ftype == "select":
+        opts = f.get("options")
+        if not isinstance(opts, list) or not opts:
+            return None
+        item["options"] = [str(o)[:120] for o in opts[:50]]
+    if ftype == "list":
+        raw = f.get("fields")
+        if not isinstance(raw, list) or not 1 <= len(raw) <= MAX_LIST_SUBFIELDS:
+            return None
+        subs = [_schema_field(s, sub=True) for s in raw]
+        names = [s["name"] for s in subs if s is not None]
+        # One bad column drops the whole list field: saving a list without
+        # that column would silently delete its values from every row.
+        if len(names) != len(raw) or len(set(names)) != len(names):
+            return None
+        item["fields"] = subs
+        mi = f.get("max_items")
+        item["max_items"] = (min(mi, MAX_LIST_ITEMS) if isinstance(mi, int) and not isinstance(mi, bool)
+                             and mi >= 1 else DEFAULT_LIST_ITEMS)
+        default, err = _coerce_list(item, f.get("default")) if f.get("default") is not None else ([], None)
+        item["default"] = [] if err else default
+    return item
+
 
 def validate_config_schema(raw: Any) -> List[dict]:
     """Normalise ``Plugin.get_config_schema()`` (silently drops bad fields)."""
     out: List[dict] = []
+    seen = set()
     if not isinstance(raw, list):
         return out
-    for f in raw[:40]:
-        if not isinstance(f, dict):
+    for f in raw[:MAX_SCHEMA_FIELDS]:
+        item = _schema_field(f)
+        if item is None or item["name"] in seen:
             continue
-        name = f.get("name")
-        if not isinstance(name, str) or not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]{0,63}", name):
-            continue
-        ftype = f.get("type", "text")
-        if ftype not in FIELD_TYPES:
-            ftype = "text"
-        item: Dict[str, Any] = {
-            "name": name, "type": ftype,
-            "label": str(f.get("label") or name)[:120],
-            "help": str(f.get("help") or "")[:300],
-            "placeholder": str(f.get("placeholder") or "")[:120],
-            "required": bool(f.get("required")),
-            "secret": bool(f.get("secret")) or ftype == "password",
-            "default": f.get("default") if isinstance(f.get("default"), (str, int, float, bool)) else None,
-        }
-        for k in ("min", "max"):
-            if isinstance(f.get(k), (int, float)) and not isinstance(f.get(k), bool):
-                item[k] = f[k]
-        if ftype == "select":
-            opts = f.get("options")
-            if not isinstance(opts, list) or not opts:
-                continue
-            item["options"] = [str(o)[:120] for o in opts[:50]]
+        seen.add(item["name"])
         out.append(item)
     return out
+
+
+def _is_url(v: str) -> bool:
+    """http(s):// with a host, no whitespace or control characters."""
+    return (not any(c.isspace() or ord(c) < 0x20 or ord(c) == 0x7f for c in v)
+            and bool(_URL_RE.match(v)))
+
+
+def _coerce_value(f: dict, v: Any) -> tuple[Any, Optional[str]]:
+    """Coerce one submitted value for a scalar field (every type but ``list``).
+
+    Returns ``(value, error)``; *value* is ``_SKIP`` when the key should be
+    left out (an empty, optional number).  Errors name the field label."""
+    t, label = f["type"], f["label"]
+    if t == "checkbox":
+        return bool(v), None
+    if t == "number":
+        if isinstance(v, bool) or v in (None, ""):
+            return (_SKIP, "%s is required" % label) if f.get("required") else (_SKIP, None)
+        try:
+            num = float(v)
+            if num != num or num in (float("inf"), float("-inf")):
+                raise ValueError
+        except (TypeError, ValueError):
+            return _SKIP, "%s must be a number" % label
+        if "min" in f and num < f["min"]:
+            return _SKIP, "%s must be >= %s" % (label, f["min"])
+        if "max" in f and num > f["max"]:
+            return _SKIP, "%s must be <= %s" % (label, f["max"])
+        return (int(num) if num == int(num) else num), None
+    if t == "select":
+        if v not in f["options"]:
+            return _SKIP, "%s: invalid choice" % label
+        return v, None
+    limit = MAX_TEXTAREA if t == "textarea" else MAX_TEXT
+    if not isinstance(v, str) or len(v) > limit:
+        return _SKIP, "%s must be text (max %d)" % (label, limit)
+    if f.get("required") and not v.strip():
+        return _SKIP, "%s is required" % label
+    if t == "url" and v and not _is_url(v):
+        return _SKIP, "%s must start with http:// or https://" % label
+    return v, None
+
+
+def _coerce_list(f: dict, v: Any) -> tuple[Any, Optional[str]]:
+    """Coerce a ``list`` field: rows of objects, each column checked with
+    the same rules as a top-level field; unknown row keys are dropped."""
+    label = f["label"]
+    if not isinstance(v, list):
+        return _SKIP, "%s must be a list" % label
+    if len(v) > f["max_items"]:
+        return _SKIP, "%s: at most %d rows" % (label, f["max_items"])
+    if f.get("required") and not v:
+        return _SKIP, "%s needs at least one row" % label
+    rows: List[dict] = []
+    for i, row in enumerate(v, 1):
+        if not isinstance(row, dict):
+            return _SKIP, "%s, row %d: must be an object" % (label, i)
+        out: Dict[str, Any] = {}
+        for sf in f["fields"]:
+            if sf["name"] not in row:
+                if sf["required"]:
+                    return _SKIP, "%s, row %d: %s is required" % (label, i, sf["label"])
+                continue
+            val, err = _coerce_value(sf, row[sf["name"]])
+            if err:
+                return _SKIP, "%s, row %d: %s" % (label, i, err)
+            if val is not _SKIP:
+                out[sf["name"]] = val
+        rows.append(out)
+    return rows, None
 
 
 def coerce_config_values(schema: List[dict], values: Any, current: dict) -> tuple[dict, Optional[str]]:
@@ -512,33 +632,77 @@ def coerce_config_values(schema: List[dict], values: Any, current: dict) -> tupl
         v = values[name]
         if f["secret"] and (v in (None, "") or (isinstance(v, dict) and v.get("__set"))):
             continue
-        t = f["type"]
-        if t == "checkbox":
-            out[name] = bool(v)
-        elif t == "number":
-            if isinstance(v, bool) or v in (None, ""):
-                if f.get("required"):
-                    return {}, "%s is required" % f["label"]
-                continue
-            try:
-                num = float(v)
-                if num != num or num in (float("inf"), float("-inf")):
-                    raise ValueError
-            except (TypeError, ValueError):
-                return {}, "%s must be a number" % f["label"]
-            if "min" in f and num < f["min"]:
-                return {}, "%s must be >= %s" % (f["label"], f["min"])
-            if "max" in f and num > f["max"]:
-                return {}, "%s must be <= %s" % (f["label"], f["max"])
-            out[name] = int(num) if num == int(num) else num
-        elif t == "select":
-            if v not in f["options"]:
-                return {}, "%s: invalid choice" % f["label"]
-            out[name] = v
-        else:
-            if not isinstance(v, str) or len(v) > 2000:
-                return {}, "%s must be text (max 2000)" % f["label"]
-            if f.get("required") and not v.strip():
-                return {}, "%s is required" % f["label"]
-            out[name] = v
+        val, err = _coerce_list(f, v) if f["type"] == "list" else _coerce_value(f, v)
+        if err:
+            return {}, err
+        if val is not _SKIP:
+            out[name] = val
     return out, None
+
+
+def _infer_scalar(key: str, v: Any) -> Optional[str]:
+    """Field type for one config value, None when it cannot be edited."""
+    if isinstance(v, bool):
+        return "checkbox"
+    if isinstance(v, (int, float)):
+        return "number" if v == v and v not in (float("inf"), float("-inf")) else None
+    if isinstance(v, str):
+        if len(v) > MAX_TEXT:
+            return None
+        if _SECRET_KEY_RE.search(key):
+            return "password"
+        return "url" if _is_url(v) else "text"
+    return None
+
+
+def _infer_list(rows: list) -> Optional[List[dict]]:
+    """Columns for a list of flat dicts, None when the list does not fit."""
+    if not rows or len(rows) > MAX_LIST_ITEMS or not all(isinstance(r, dict) for r in rows):
+        return None
+    seen: Dict[str, set] = {}
+    for r in rows:
+        for k, v in r.items():
+            t = _infer_scalar(k, v) if isinstance(k, str) and _FIELD_NAME_RE.fullmatch(k) else None
+            if t is None or t == "password":
+                return None
+            seen.setdefault(k, set()).add("empty" if v == "" else t)
+    if len(seen) > MAX_LIST_SUBFIELDS:
+        return None
+    cols = []
+    for k, types in seen.items():
+        texts = types - {"empty"}
+        if not texts or texts <= {"text", "url"}:
+            t = "url" if texts == {"url"} else "text"
+        elif len(texts) == 1:
+            t = texts.pop()
+        else:                          # e.g. a number in one row, text in another
+            return None
+        cols.append({"name": k, "type": t, "label": _infer_label(k)})
+    return cols
+
+
+def _infer_label(key: str) -> str:
+    s = key.replace("_", " ").strip()
+    return s[:1].upper() + s[1:] if s else key
+
+
+def infer_config_schema(config: Any) -> List[dict]:
+    """Derive a schema from a plugin's current ``config.json`` (for plugins
+    without ``get_config_schema()``).  Values that cannot be edited safely
+    as one field (nested objects, null, mixed lists) are left out."""
+    if not isinstance(config, dict):
+        return []
+    raw: List[dict] = []
+    for key, v in list(config.items()):     # the live dict; plugin threads may edit it
+        if not isinstance(key, str) or not _FIELD_NAME_RE.fullmatch(key):
+            continue
+        if isinstance(v, list):
+            cols = _infer_list(v)
+            if cols is not None:
+                raw.append({"name": key, "type": "list", "label": _infer_label(key), "fields": cols,
+                            "max_items": MAX_LIST_ITEMS})
+            continue
+        t = _infer_scalar(key, v)
+        if t is not None:
+            raw.append({"name": key, "type": t, "label": _infer_label(key)})
+    return validate_config_schema(raw)

@@ -1013,7 +1013,7 @@ class PluginManager:
                 "granted": lp.granted,
                 "denied": lp.denied,
                 "ui_off": bool(self._grant_of(name).get("ui_off")),
-                "has_config": bool(lp.config_schema),
+                "has_config": bool(self._config_schema(lp)[0]),
                 "routes": [{"method": r.method, "path": r.path} for r in lp.routes],
                 "tasks": [t.name for t in lp.tasks],
                 "frames": [{"id": f.id, "blocked": f.blocked} for f in lp.frames.values()],
@@ -1199,27 +1199,38 @@ class PluginManager:
 
     # ── Config schema (Configure dialog) ───────────────────────────────────
 
+    @staticmethod
+    def _config_schema(lp: _LoadedPlugin) -> Tuple[List[dict], bool]:
+        """``(schema, inferred)``: the plugin's own schema, or one derived
+        from its current config.json when it declares none."""
+        if lp.config_schema:
+            return lp.config_schema, False
+        inferred = contrib.infer_config_schema(lp.ctx.get_config())
+        return inferred, bool(inferred)
+
     def plugin_config_get(self, name: str) -> Tuple[Any, int]:
         lp = self._plugins.get(name)
         if lp is None:
             return {"error": "Unknown plugin"}, 404
+        schema, inferred = self._config_schema(lp)
         cfg = lp.ctx.get_config()
         values: Dict[str, Any] = {}
-        for f in lp.config_schema:
+        for f in schema:
             v = cfg.get(f["name"], f.get("default"))
             values[f["name"]] = ({"__set": bool(cfg.get(f["name"]))}
                                  if f["secret"] else v)
-        return {"schema": lp.config_schema, "values": values,
+        return {"schema": schema, "values": values, "inferred": inferred,
                 "title": lp.plugin.name}, 200
 
     def plugin_config_set(self, name: str, values: Any) -> Tuple[Any, int]:
         lp = self._plugins.get(name)
         if lp is None:
             return {"error": "Unknown plugin"}, 404
-        if not lp.config_schema:
+        schema, _ = self._config_schema(lp)
+        if not schema:
             return {"error": "Plugin has no configuration schema"}, 400
         cur = dict(lp.ctx.get_config())
-        new_vals, err = contrib.coerce_config_values(lp.config_schema, values, cur)
+        new_vals, err = contrib.coerce_config_values(schema, values, cur)
         if err:
             return {"error": err}, 400
         merged = dict(cur)

@@ -269,24 +269,73 @@ Contribution("style", "css", static={"css": ".hostcard { box-shadow: none; }"})
 
 ## 5. Config schema
 
-Declare settings and Pi Hub renders the form (Settings → Plugins →
-**Configure**):
+Declare every setting and Pi Hub renders the form (Settings → Plugins →
+**Configure**); nobody has to edit `config.json` by hand:
 
 ```python
 def get_config_schema(self):
     return [
-        {"name": "probe_port", "label": "Probe port", "type": "number", "default": 22, "min": 1, "max": 65535},
-        {"name": "api_key",    "label": "API key",    "type": "password"},   # secret: masked, kept when left blank
-        {"name": "mode",       "label": "Mode",       "type": "select", "options": ["fast", "slow"]},
-        {"name": "verbose",    "label": "Verbose",    "type": "checkbox"},
-        {"name": "url",        "label": "URL",        "type": "text", "required": True},
+        {"name": "enabled",  "label": "Enabled",  "type": "checkbox", "default": True},
+        {"name": "base_url", "label": "Panel URL", "type": "url", "required": True,
+         "section": "Connection", "placeholder": "https://panel.example.local"},
+        {"name": "api_key",  "label": "API key",  "type": "password", "section": "Connection",
+         "help": "Stored on the Pi; never sent back to the browser."},
+        {"name": "timeout",  "label": "Timeout (s)", "type": "number", "default": 8, "min": 1, "max": 60,
+         "section": "Connection"},
+        {"name": "mode",     "label": "Mode",     "type": "select", "options": ["fast", "slow"],
+         "section": "Display"},
+        {"name": "motd",     "label": "Message",  "type": "textarea", "section": "Display"},
+        {"name": "links",    "label": "Links",    "type": "list", "section": "Display", "max_items": 20,
+         "fields": [
+             {"name": "title", "label": "Title", "type": "text", "required": True},
+             {"name": "url",   "label": "URL",   "type": "url",  "required": True},
+             {"name": "new_tab", "label": "New tab", "type": "checkbox", "default": True},
+         ]},
     ]
 ```
 
-Values are validated and stored in the plugin's `config.json`
-(`ctx.get_config()`); secrets are never sent back to the browser. When your
-`version` changes, `migrate_config(old_version, config) -> dict` runs before
-`load()`, and `on_config_change(config)` runs after an admin saves.
+A schema is a list of at most 60 fields. Keys of a field:
+
+| Key | Meaning |
+|---|---|
+| `name` | `[A-Za-z_][A-Za-z0-9_]{0,63}`, unique; the key in `config.json` |
+| `type` | `text` `password` `number` `checkbox` `select` `url` `textarea` `list` (unknown → `text`) |
+| `label` / `help` / `placeholder` | up to 120 / 300 / 120 characters; `help` is shown under the field |
+| `required` | the value must not be empty (`list`: at least one row) |
+| `secret` | masked; implied by `password` |
+| `default` | shown when `config.json` has no value; a list of objects for `list` |
+| `min` / `max` | `number` only |
+| `options` | `select` only, required |
+| `section` | up to 60 characters; consecutive fields with the same section are grouped under that heading. Fields without a section come first |
+| `fields` | `list` only, required: 1–8 columns of type `text` `url` `number` `checkbox` `select` (no secrets, no nested lists, no sections). A list with one invalid column is dropped as a whole |
+| `max_items` | `list` only, default 50, at most 100 |
+
+Values are checked on the server before anything is written:
+
+- `text` / `password`: a string of at most 2000 characters; `textarea`: at most 8000.
+- `url`: empty, or `http://` / `https://` with a host and without spaces or control characters.
+- `number`: within `min` / `max`; an empty optional number is left out.
+- `select`: one of `options`.
+- `list`: an array of objects, at most `max_items` rows. Each column is checked with the rules
+  above (`required` applies per row), unknown keys in a row are dropped, and an error names the
+  row (`Links, row 3: URL must start with http:// or https://`). Stored as a list of objects.
+
+Secrets are never sent back to the browser: the dialog receives `{"__set": true|false}` and a
+secret left blank keeps its stored value. Read the values with `ctx.get_config()`.
+`on_config_change(old, new)` runs after an admin saves. When your `version` changes,
+`migrate_config(old_version, config) -> dict` runs before `load()` — use it to rename or reshape
+keys of older `config.json` files.
+
+A plugin that uses `url`, `textarea`, `list` or `section` needs `min_core_version = "8.3.0"`.
+
+**Plugins without a schema.** When a loaded plugin returns no schema but its `config.json` has
+keys, Pi Hub builds a form from the file: booleans become checkboxes, numbers number fields,
+strings `url` (when they are an http(s) URL) or `text`, and strings whose key contains `key`,
+`token`, `secret`, `password` or `passwd` become masked secrets. A list of flat objects becomes a
+`list` (columns from the keys of its rows, at most 8); nested objects, `null`, other lists and
+strings longer than 2000 characters are left out (and kept unchanged on save). The dialog says
+that the form was inferred, and labels are the keys with `_` turned into spaces. This is a
+fallback for old plugins — declare a schema so the labels, help texts and limits are right.
 
 ---
 
@@ -545,6 +594,7 @@ honest.
 - [ ] Providers are fast (3 s budget) and return small payloads
 - [ ] Background loops check `thread_cancel()`; long actions are single-flight
 - [ ] Every button `action` has a matching `RouteDef`
+- [ ] Every setting is in the schema (grouped with `section`), so the plugin is configured in the GUI and nobody edits `config.json`
 - [ ] `python3 -m py_compile` passes for every `.py`
 - [ ] Tried with `/?safe=1` and with the plugin's UI hidden
 - [ ] If store-distributed: both assets, one plugin per release, semver tag
@@ -556,7 +606,7 @@ honest.
 
 - `examples/plugins/host-insights/` — declarative v2: badges on host cards, a
   Containers column, a header pill, a Settings card, a tab with a table and
-  a form, config schema, task, events.
+  a form, config schema with sections and a `list` field, task, events.
 - `examples/plugins/midnight-theme/` — theme + layout + style, no code.
 - `examples/plugins/live-pulse/` — a sandboxed frame with canvas sparklines.
 - `tests/fixtures/evil-frame/` — a **hostile** frame used by the test-suite to

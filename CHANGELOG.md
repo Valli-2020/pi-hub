@@ -3,6 +3,38 @@
 All notable changes to Pi Hub are documented here. Every release ships a
 changelog entry AND matching GitHub release notes.
 
+## [8.3.0] - 2026-11-14
+
+Every plugin can now be configured completely in Settings → Plugins → Configure.
+
+### Added
+
+- **New field types for plugin settings:** `url` (checked on the server: http://
+  or https:// with a host), `textarea` (up to 8000 characters) and `list`, a
+  table of rows with up to 8 columns. Rows can be added, moved up and down and
+  removed; an error names the row (`Links, row 3: URL must start with http:// or
+  https://`). On phones each row is shown as a small card.
+- **Sections:** fields with the same `section` are grouped under a heading.
+- **Plugins without a schema** get a form built from their `config.json`
+  (checkboxes, numbers, URLs, text, masked secrets for keys such as `api_key` or
+  `token`, and lists of flat objects). The dialog says that the form was
+  inferred. Their Configure button now shows up.
+- `examples/plugins/host-insights` 1.1.0 groups its settings in sections and has
+  an *Extra targets* list.
+
+### Changed
+
+- The Configure dialog is wider, scrolls with the Save button always visible,
+  shows help texts under each field and shows save errors in red.
+- PLUGINS.md §5 documents every field key and value rule; the checklist asks for
+  every setting to be in the schema.
+
+### Upgrade notes
+
+A plugin that uses `url`, `textarea`, `list` or `section` needs
+`min_core_version = "8.3.0"`. Older cores show these fields as plain text
+inputs, which cannot edit a list.
+
 ## [8.2.1] - 2026-11-09
 
 Dockge stacks inside a Proxmox LXC container can now be listed and controlled.

@@ -12,6 +12,10 @@ Demo plugin for Pi Hub's **Plugin API v2** — it edits the *standard* tabs inst
 | "Insights" tab with a table, per-row **Probe** button and a threshold form | `tab` |
 | CSS scoped to the plugin (`.plg-host-insights`) | `style` |
 
+Settings → Plugins → **Configure** shows its settings in three sections (Probe, Thresholds, Extra targets);
+*Extra targets* is a `list` field: rows of name, address and port that are probed and listed in the Insights tab
+next to the Pi Hub hosts.
+
 It only **reads** (TCP connect to port 22 by default, Proxmox container list). It sends nothing and controls nothing.
 
 Install: copy this folder to `pi_hub_plugins/host-insights/`, add `"host-insights"` to `pi_hub_plugins/plugins.json` and click **Review & approve** in Settings → Plugins. The consent dialog lists exactly the capabilities in `pihub-plugin.json`.

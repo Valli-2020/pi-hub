@@ -436,6 +436,53 @@
                   border-radius:0 0 16px 16px; }
   .dlg .sub { display:block; margin:0 0 14px; font-size:13px; color:var(--muted); }
 
+  /* ── Plugin form / Configure dialog ────────────────────────────────── */
+  dialog.pfdlg { max-width:620px; }
+  #pf-fields { max-height:calc(100dvh - 210px); overflow:auto; overscroll-behavior:contain;
+               margin:0 -22px; padding:0 22px; }
+  #pf-fields .pf-note { margin:4px 0 10px; }
+  .pf-sec { margin:18px 0 8px; padding-top:12px; border-top:1px solid var(--border);
+            font-size:13px; font-weight:650; color:var(--text); }
+  .pf-row { margin:6px 0; gap:10px; }
+  .pf-row .pf-label { flex:1; }
+  .pf-row > input:not([type=checkbox]), .pf-row > select { flex:1 1 200px; }
+  .pf-row.pf-wide > textarea { flex:1 1 100%; width:100%; resize:vertical; min-height:84px; }
+  .pf-help { flex-basis:100%; margin:0 !important; font-size:12px; }
+  .pf-list { margin:8px 0; padding:10px 12px; border:1px solid var(--border); border-radius:var(--r-md);
+             background:var(--field); }
+  .pf-lhead { display:flex; align-items:baseline; gap:8px; }
+  .pf-lname { font-size:13px; font-weight:600; flex:1; }
+  .pf-lcount { font-size:11.5px; color:var(--faint); font-variant-numeric:tabular-nums; }
+  .pf-list > .pf-help { display:block; margin:2px 0 0 !important; }
+  .pf-lgrid { display:grid; grid-template-columns:repeat(var(--cols), minmax(0, 1fr)) auto;
+              gap:6px 8px; align-items:center; margin-top:10px; }
+  .pf-lcols, .pf-lrow { display:contents; }
+  .pf-lcols > span { font-size:11.5px; font-weight:560; color:var(--muted); }
+  .pf-list.is-empty .pf-lgrid { display:none; }
+  .pf-lempty { display:none; margin:10px 0 0 !important; font-size:12.5px; color:var(--faint); }
+  .pf-list.is-empty .pf-lempty { display:block; }
+  .pf-cell { display:flex; min-width:0; }
+  .pf-cell > input:not([type=checkbox]), .pf-cell > select { width:100%; height:30px; font-size:13px; }
+  .pf-cell-cb { padding-left:4px; }
+  .pf-row > input[type=checkbox], .pf-cell input[type=checkbox] { width:15px; height:15px; accent-color:var(--accent); }
+  .pf-clabel { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); }
+  .pf-lctl { display:flex; gap:2px; }
+  .pf-lctl .btn-icon:disabled { opacity:.35; }
+  .pf-ladd { margin-top:10px; }
+  #pf-hint:not(:empty) { color:var(--bad); }
+  @media (max-width:560px) {
+    .pf-row > input:not([type=checkbox]), .pf-row > select { flex-basis:100%; }
+    .pf-lgrid { display:flex; flex-direction:column; align-items:stretch; gap:8px; }
+    .pf-lcols { display:none; }
+    .pf-lrow { display:flex; flex-direction:column; gap:6px; padding:8px 10px; border:1px solid var(--border);
+               border-radius:var(--radius-sm); background:var(--surface); }
+    .pf-cell { flex-direction:column; gap:3px; }
+    .pf-cell-cb { flex-direction:row-reverse; justify-content:flex-end; align-items:center; gap:8px; padding-left:0; }
+    .pf-clabel { position:static; width:auto; height:auto; overflow:visible; clip:auto;
+                 font-size:11.5px; font-weight:560; color:var(--muted); }
+    .pf-lctl { justify-content:flex-end; }
+  }
+
   /* ── Form fields (one look everywhere) ─────────────────────────────── */
   .finput, .instrow input, .instrow select, .adduser input, .adduser select, .scanrow input[type=text],
   .login-card input, .logincard input, dialog input:not([type=checkbox]):not([type=radio]), dialog select, dialog textarea {
@@ -997,7 +1044,7 @@
   </div>
 </dialog>
 
-<dialog id="plgform">
+<dialog id="plgform" class="pfdlg">
   <div class="dlg">
     <h3 id="pf-title">Configure</h3>
     <div id="pf-fields"></div>
@@ -1110,7 +1157,9 @@ const SVG = {
   info: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg>',
   edit: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16Z"/><path d="m13.5 6.5 4 4"/></svg>',
   trash:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3"/></svg>',
-  x:    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg>'
+  x:    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg>',
+  up:   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 15 6-6 6 6"/></svg>',
+  down: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>'
 };
 
 const S = { cfg:{}, icons:{}, hosts:[], services:[], containers:[], stacks:[], stackEndpoints:[], stackBusy:{},
@@ -2459,10 +2508,12 @@ async function openPluginConfig(name){
     name: f.name, label: f.label + (f.required ? ' *' : ''), type: f.secret ? 'password' : f.type,
     default: f.secret ? '' : (d.values[f.name] ?? f.default),
     placeholder: f.secret ? (d.values[f.name] && d.values[f.name].__set ? '•••••• (set — leave blank to keep)' : f.placeholder) : f.placeholder,
-    options: f.options, help: f.help,
+    options: f.options, help: f.help, section: f.section || '', fields: f.fields, max_items: f.max_items,
   }));
   openPluginForm(name, 'config', fields, {
     title: 'Configure ' + name,
+    note: d.inferred ? 'This plugin does not describe its settings, so this form was built from its config.json. ' +
+                       'Check each value before you save.' : '',
     submit: async values => {
       const r = await apiFetch('/api/config/plugins/' + encodeURIComponent(name) + '/config', {
         method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify(values) }).then(r => r.json());
@@ -3637,65 +3688,210 @@ function openPluginForm(name, actionId, fields, opts){
   pfActive = { name, actionId, fields, opts };
   $('#pf-title').textContent = opts.title || ('Configure ' + name);
   const box = $('#pf-fields');
-  box.innerHTML = '';
-  fields.forEach(f => {
-    const row = document.createElement('label');
-    row.className = 'scanrow';
-    row.style.cssText = 'display:flex;align-items:center;gap:10px;margin:6px 0;flex-wrap:wrap';
-    const label = document.createElement('span');
-    label.className = 'srcc';
-    label.style.flex = '1';
-    label.textContent = f.label || f.name;
-    row.appendChild(label);
+  box.textContent = '';
+  if (opts.note){
+    const note = document.createElement('p');
+    note.className = 'hint pf-note';
+    note.textContent = opts.note;
+    box.appendChild(note);
+  }
+  // Fields without a section first, then each run of one section under its heading.
+  let section = '';
+  fields.filter(f => !f.section).concat(fields.filter(f => f.section)).forEach(f => {
+    if (f.section && f.section !== section){
+      const h = document.createElement('h4');
+      h.className = 'pf-sec';
+      h.textContent = f.section;
+      box.appendChild(h);
+    }
+    section = f.section || '';
     const cur = opts.values && opts.values[f.name] !== undefined ? opts.values[f.name] : f.default;
-    if (f.type === 'checkbox'){
-      const cb = document.createElement('input');
-      cb.type = 'checkbox';
-      cb.name = f.name;
-      cb.checked = !!cur;
-      row.appendChild(cb);
-    } else if (f.type === 'select'){
-      const sel = document.createElement('select');
-      sel.name = f.name;
-      (f.options || []).forEach(o => {
-        const op = document.createElement('option');
-        op.value = o; op.textContent = o;
-        if (String(cur) === String(o)) op.selected = true;
-        sel.appendChild(op);
-      });
-      row.appendChild(sel);
-    } else {
-      const inp = document.createElement('input');
-      inp.type = f.type === 'number' ? 'number'
-               : f.type === 'password' ? 'password' : 'text';
-      inp.name = f.name;
-      inp.placeholder = f.placeholder || '';
-      if (cur !== undefined && cur !== null && f.type !== 'password')
-        inp.value = String(cur);
-      row.appendChild(inp);
-    }
-    if (f.help){
-      const h = document.createElement('span');
-      h.className = 'hint'; h.style.cssText = 'flex-basis:100%;margin:0';
-      h.textContent = f.help;
-      row.appendChild(h);
-    }
-    box.appendChild(row);
+    box.appendChild(pfIsList(f) ? pfListField(f, cur) : pfScalarField(f, cur));
   });
   $('#pf-hint').textContent = '';
   $('#plgform').showModal();
 }
 
+// A list needs its columns; anything else named "list" (old action forms) renders as text.
+const pfIsList = f => f.type === 'list' && Array.isArray(f.fields) && f.fields.length > 0;
+
+function pfInput(f, cur){
+  if (f.type === 'checkbox'){
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.checked = !!cur;
+    return cb;
+  }
+  if (f.type === 'select'){
+    const sel = document.createElement('select');
+    (f.options || []).forEach(o => {
+      const op = document.createElement('option');
+      op.value = o; op.textContent = o;
+      if (String(cur) === String(o)) op.selected = true;
+      sel.appendChild(op);
+    });
+    return sel;
+  }
+  const inp = document.createElement(f.type === 'textarea' ? 'textarea' : 'input');
+  if (f.type === 'textarea'){ inp.rows = 4; inp.maxLength = 8000; }
+  else inp.type = { number:'number', password:'password', url:'url' }[f.type] || 'text';
+  if (f.type === 'number') inp.step = 'any';
+  inp.placeholder = f.placeholder || '';
+  if (cur !== undefined && cur !== null && f.type !== 'password') inp.value = String(cur);
+  return inp;
+}
+
+function pfHelp(text){
+  const h = document.createElement('span');
+  h.className = 'hint pf-help';
+  h.textContent = text;
+  return h;
+}
+
+function pfScalarField(f, cur){
+  const row = document.createElement('label');
+  row.className = 'scanrow pf-row' + (f.type === 'textarea' ? ' pf-wide' : '');
+  const label = document.createElement('span');
+  label.className = 'srcc pf-label';
+  label.textContent = f.label || f.name;
+  row.appendChild(label);
+  const inp = pfInput(f, cur);
+  inp.name = f.name;
+  row.appendChild(inp);
+  if (f.help) row.appendChild(pfHelp(f.help));
+  return row;
+}
+
+/* list field: rows of sub-field inputs; buttons carry data-pfl (delegated below) */
+function pfListField(f, rows){
+  const wrap = document.createElement('div');
+  wrap.className = 'pf-list';
+  wrap.dataset.name = f.name;
+  const head = document.createElement('div');
+  head.className = 'pf-lhead';
+  const title = document.createElement('span');
+  title.className = 'pf-lname';
+  title.textContent = f.label || f.name;
+  const count = document.createElement('span');
+  count.className = 'pf-lcount';
+  head.append(title, count);
+  wrap.appendChild(head);
+  if (f.help) wrap.appendChild(pfHelp(f.help));
+  const grid = document.createElement('div');
+  grid.className = 'pf-lgrid';
+  grid.style.setProperty('--cols', String(f.fields.length));
+  const cols = document.createElement('div');
+  cols.className = 'pf-lcols';
+  f.fields.forEach(sf => {
+    const c = document.createElement('span');
+    c.textContent = sf.label + (sf.required ? ' *' : '');
+    cols.appendChild(c);
+  });
+  cols.appendChild(document.createElement('span'));
+  grid.appendChild(cols);
+  (Array.isArray(rows) ? rows : []).forEach(r => grid.appendChild(pfListRow(f, r && typeof r === 'object' ? r : {})));
+  wrap.appendChild(grid);
+  const empty = document.createElement('p');
+  empty.className = 'pf-lempty';
+  empty.textContent = 'No entries yet.';
+  wrap.appendChild(empty);
+  const add = document.createElement('button');
+  add.type = 'button';
+  add.className = 'btn btn-sm btn-quiet pf-ladd';
+  add.dataset.pfl = 'add';
+  add.textContent = 'Add row';
+  wrap.appendChild(add);
+  pfListSync(wrap, f);
+  return wrap;
+}
+
+function pfListRow(f, values){
+  const row = document.createElement('div');
+  row.className = 'pf-lrow';
+  f.fields.forEach(sf => {
+    const cell = document.createElement('label');
+    cell.className = 'pf-cell' + (sf.type === 'checkbox' ? ' pf-cell-cb' : '');
+    const lab = document.createElement('span');
+    lab.className = 'pf-clabel';
+    lab.textContent = sf.label + (sf.required ? ' *' : '');
+    const inp = pfInput(sf, values[sf.name] !== undefined ? values[sf.name] : sf.default);
+    inp.dataset.sub = sf.name;
+    cell.append(lab, inp);
+    row.appendChild(cell);
+  });
+  const ctl = document.createElement('span');
+  ctl.className = 'pf-lctl';
+  [['up', 'Move up', SVG.up], ['down', 'Move down', SVG.down], ['del', 'Remove row', SVG.trash]].forEach(([act, text, icon]) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'btn btn-sm btn-icon' + (act === 'del' ? ' danger' : '');
+    b.dataset.pfl = act;
+    b.title = text;
+    b.setAttribute('aria-label', text);
+    b.innerHTML = icon;   // static icon constant, no data
+    ctl.appendChild(b);
+  });
+  row.appendChild(ctl);
+  return row;
+}
+
+function pfListSync(wrap, f){
+  const rows = $$('.pf-lrow', wrap);
+  const max = f.max_items || 50;
+  wrap.classList.toggle('is-empty', !rows.length);
+  rows.forEach((r, i) => {
+    r.querySelector('[data-pfl="up"]').disabled = i === 0;
+    r.querySelector('[data-pfl="down"]').disabled = i === rows.length - 1;
+  });
+  $('.pf-lcount', wrap).textContent = rows.length ? rows.length + ' of ' + max : '';
+  const add = $('.pf-ladd', wrap);
+  add.disabled = rows.length >= max;
+  add.title = add.disabled ? 'At most ' + max + ' rows' : '';
+}
+
+$('#pf-fields').addEventListener('click', e => {
+  const b = e.target.closest('button[data-pfl]');
+  const wrap = b && b.closest('.pf-list');
+  const f = wrap && pfActive && pfActive.fields.find(x => x.name === wrap.dataset.name);
+  if (!f) return;
+  e.preventDefault();
+  const row = b.closest('.pf-lrow');
+  if (b.dataset.pfl === 'add'){
+    const nr = pfListRow(f, {});
+    $('.pf-lgrid', wrap).appendChild(nr);
+    pfListSync(wrap, f);
+    const first = nr.querySelector('input, select');
+    if (first) first.focus();
+    return;
+  }
+  if (b.dataset.pfl === 'up' && row.previousElementSibling.classList.contains('pf-lrow')) row.previousElementSibling.before(row);
+  else if (b.dataset.pfl === 'down' && row.nextElementSibling) row.nextElementSibling.after(row);
+  else if (b.dataset.pfl === 'del') row.remove();
+  pfListSync(wrap, f);
+  const keep = row.isConnected && row.querySelector('[data-pfl="' + b.dataset.pfl + '"]');
+  if (keep && !keep.disabled) keep.focus();
+});
+
 function pfSubmit(){
   if (!pfActive) return;
   const { name, actionId, fields, opts } = pfActive;
   const body = {};
+  const val = el => el.type === 'checkbox' ? el.checked : el.value;
   fields.forEach(f => {
+    if (pfIsList(f)){
+      const wrap = $('#pf-fields .pf-list[data-name="' + CSS.escape(f.name) + '"]');
+      if (wrap) body[f.name] = $$('.pf-lrow', wrap).map(r => {
+        const o = {};
+        $$('[data-sub]', r).forEach(el => { o[el.dataset.sub] = val(el); });
+        return o;
+      });
+      return;
+    }
     const el = $('#pf-fields').querySelector('[name="' + CSS.escape(f.name) + '"]');
-    if (!el) return;
-    body[f.name] = f.type === 'checkbox' ? el.checked : el.value;
+    if (el) body[f.name] = val(el);
   });
   $('#pf-ok').disabled = true;
+  $('#pf-hint').textContent = '';
   if (opts.submit){
     // callback returns null on success or an error string (keeps the dialog open)
     Promise.resolve(opts.submit(body)).then(err => {

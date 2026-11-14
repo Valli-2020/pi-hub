@@ -25,9 +25,9 @@ _HOUR = 3600.0
 
 class HostInsights(Plugin):
     name = "host-insights"
-    version = "1.0.0"
+    version = "1.1.0"
     description = "Latency / flapping badges, CPU column, header pill and overview tab"
-    min_core_version = "8.0.0"
+    min_core_version = "8.3.0"
     plugin_api_version = 2
     capabilities = ["hosts.read", "proxmox.read", "ui.slots", "ui.header",
                     "ui.settings", "ui.tab", "ui.style"]
@@ -42,17 +42,39 @@ class HostInsights(Plugin):
         self._flips: dict[str, list[float]] = {}      # host id -> flip timestamps
         self._cpu: dict[str, list[tuple[float, float]]] = {}  # "inst:vmid" -> [(ts, cpu)]
         cfg = ctx.get_config()
-        for k, v in (("probe_port", 22), ("timeout", 1.0), ("warn_ms", 80), ("bad_ms", 250)):
+        for k, v in (("probe_port", 22), ("timeout", 1.0), ("warn_ms", 80), ("bad_ms", 250),
+                     ("extra_targets", [])):
             cfg.setdefault(k, v)
 
     def get_config_schema(self):
         return [
             {"name": "probe_port", "label": "Probe port", "type": "number", "min": 1, "max": 65535,
-             "help": "TCP port used for the latency probe (default 22)."},
-            {"name": "timeout", "label": "Timeout (s)", "type": "number", "min": 0.2, "max": 10},
-            {"name": "warn_ms", "label": "Warn above (ms)", "type": "number", "min": 1, "max": 10000},
-            {"name": "bad_ms", "label": "Bad above (ms)", "type": "number", "min": 1, "max": 10000},
+             "section": "Probe", "help": "TCP port used for the latency probe (default 22)."},
+            {"name": "timeout", "label": "Timeout (s)", "type": "number", "min": 0.2, "max": 10,
+             "section": "Probe"},
+            {"name": "warn_ms", "label": "Warn above (ms)", "type": "number", "min": 1, "max": 10000,
+             "section": "Thresholds"},
+            {"name": "bad_ms", "label": "Bad above (ms)", "type": "number", "min": 1, "max": 10000,
+             "section": "Thresholds"},
+            {"name": "extra_targets", "label": "Extra targets", "type": "list", "max_items": 20,
+             "section": "Extra targets",
+             "help": "Addresses that are not Pi Hub hosts; they show up in the Insights tab.",
+             "fields": [
+                 {"name": "name", "label": "Name", "type": "text", "required": True},
+                 {"name": "address", "label": "Address", "type": "text", "required": True,
+                  "placeholder": "nas.example.local"},
+                 {"name": "port", "label": "Port", "type": "number", "min": 1, "max": 65535,
+                  "placeholder": "probe port"},
+             ]},
         ]
+
+    def _targets(self) -> list[dict]:
+        """Pi Hub hosts plus the configured extra targets, as probe targets."""
+        out = [{"id": h["id"], "name": h["name"], "ip": h["ip"]} for h in self.ctx.get_hosts()]
+        for t in self.ctx.get_config().get("extra_targets") or []:
+            out.append({"id": "extra:" + str(t.get("name", "")), "name": str(t.get("name", "")),
+                        "ip": str(t.get("address", "")), "port": t.get("port")})
+        return out
 
     # ── data collection (background task) ────────────────────────────────
 
@@ -60,7 +82,7 @@ class HostInsights(Plugin):
         cfg = self.ctx.get_config()
         t0 = time.perf_counter()
         try:
-            with socket.create_connection((host["ip"], int(cfg["probe_port"])),
+            with socket.create_connection((host["ip"], int(host.get("port") or cfg["probe_port"])),
                                           timeout=float(cfg["timeout"])):
                 pass
             return {"up": True, "ms": round((time.perf_counter() - t0) * 1000, 1), "ts": time.time()}
@@ -68,7 +90,7 @@ class HostInsights(Plugin):
             return {"up": False, "ms": None, "ts": time.time()}
 
     def probe_all(self) -> None:
-        for h in self.ctx.get_hosts():
+        for h in self._targets():
             res = self._probe(h)
             with self._lock:
                 old = self._lat.get(h["id"])
@@ -137,6 +159,8 @@ class HostInsights(Plugin):
         with self._lock:
             snap = dict(self._lat)
         for hid, r in snap.items():
+            if hid.startswith("extra:"):          # extra targets have no host card
+                continue
             out[hid] = {"type": "badge", "text": "%s ms" % r["ms"] if r["up"] else "down",
                         "tone": self._tone(r["ms"]), "title": "TCP connect to the probe port"}
         return out
@@ -189,7 +213,7 @@ class HostInsights(Plugin):
                                         ["reads only", True]]}
 
     def p_tab(self, session=None):
-        hosts = self.ctx.get_hosts()
+        hosts = self._targets()
         with self._lock:
             snap = dict(self._lat)
         rows = []
@@ -224,7 +248,7 @@ class HostInsights(Plugin):
 
     def r_probe(self, session, body):
         only = body.get("row") or body.get("key") or ""
-        hosts = [h for h in self.ctx.get_hosts() if not only or h["id"] == only]
+        hosts = [h for h in self._targets() if not only or h["id"] == only]
         for h in hosts:
             res = self._probe(h)
             with self._lock:
