@@ -170,6 +170,11 @@ check("garbage frame token → 401", req("GET", "/api/plugin/fp/samples", "Frame
 check("empty frame token → 401", req("GET", "/api/plugin/fp/samples", "Frame ")[0] == 401)
 check("a bearer session is not a frame token", req("GET", "/api/plugin/fp/samples", "Frame " + ADMIN_TOK)[0] == 401)
 check("a frame token is not a bearer session", req("GET", "/api/auth/me", "Bearer " + js["frame_token"])[0] == 401)
+import pi_hub
+check("auth/me reports the core version",
+      req("GET", "/api/auth/me", "Bearer " + ADMIN_TOK)[3].get("core_version") == pi_hub.__version__)
+check("auth/me hides the core version from anonymous callers",
+      "core_version" not in (req("GET", "/api/auth/me")[3] or {}))
 check("frame token in a Bearer header cannot reach plugin routes", req("GET", "/api/plugin/fp/samples", "Bearer " + js["frame_token"])[0] == 401)
 check("scheme is case-sensitive", req("GET", "/api/plugin/fp/samples", "frame " + js["frame_token"])[0] == 401)
 

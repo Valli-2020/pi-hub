@@ -3,6 +3,22 @@
 All notable changes to Pi Hub are documented here. Every release ships a
 changelog entry AND matching GitHub release notes.
 
+## [8.3.2] - 2026-11-14
+
+Open dashboard tabs follow a core update.
+
+### Fixed
+
+- **A tab opened before an update kept running the old page.** A plugin frame,
+  which always loads fresh, could then use a bridge operation the old page did
+  not know (`ph.open` after 8.3.1) and was stopped as misbehaving. `/api/auth/me`
+  now reports `core_version`; the page checks it every 30 s and whenever the tab
+  is shown again, and reloads when the server runs a different version. While a
+  dialog is open or a field has focus it waits and shows a note instead.
+- **Unknown frame operations are refused, not punished.** A well-formed message
+  with an operation the page does not know is answered with status 501 and no
+  longer counts towards stopping the frame. Malformed messages still do.
+
 ## [8.3.1] - 2026-11-14
 
 Upgrading a plugin from the store no longer switches it off, and plugins get

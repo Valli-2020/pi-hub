@@ -3394,7 +3394,13 @@ const PHF = (function(){
         handleCall(inst, m, m.op === 'read');
         return;
       }
-      default: return violate(inst, 'unknown op');
+      default:
+        // A frame built for a newer core may use an op this page does not
+        // know yet (e.g. a tab opened before an update): refuse, don't stop it.
+        if (typeof m.op !== 'string') return violate(inst, 'bad op');
+        if (Number.isInteger(m.id) && m.id > 0)
+          post(inst, { op: 'result', id: m.id, ok: false, status: 501, error: 'not supported by this Pi Hub page; reload it' });
+        return;
     }
   }
 
@@ -4276,6 +4282,7 @@ function skeletons(sel, n){
     }
     if (r.status === 401) { gateLogin(); return; }        // bad/expired token
     window.USER = await r.json();
+    window.CORE_VERSION = window.USER.core_version || '';
   } catch(e) { gateLogin(); return; }                     // network error → login screen
   $('#userbadge').innerHTML = '<span class="avatar" aria-hidden="true">' + esc(window.USER.username.charAt(0)) + '</span>' +
     '<span class="who"><b>' + esc(window.USER.username) + '</b><small>' + esc(window.USER.role) + '</small></span>';
@@ -4285,14 +4292,31 @@ function skeletons(sel, n){
     $('#add').hidden = false; $('#scan-btn').hidden = false;
   }
 
+  // The server runs a different Pi Hub version than this page (an update
+  // started elsewhere): reload, unless the user is in the middle of editing.
+  function coreUpdated(v){
+    if (!v || !window.CORE_VERSION || v === window.CORE_VERSION) return false;
+    const a = document.activeElement;
+    const busy = document.querySelector('dialog[open]') ||
+                 (a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName));
+    if (!busy) { location.reload(); return true; }
+    if (!window.CORE_RELOAD_TOLD) {
+      window.CORE_RELOAD_TOLD = true;
+      toast('Pi Hub was updated to ' + v + '. The page reloads when you are done editing.');
+    }
+    return false;
+  }
+
   // Periodically refresh the user's caps from /api/auth/me so button
-  // visibility stays correct when an admin changes caps while logged in.
-  setInterval(async () => {
+  // visibility stays correct when an admin changes caps while logged in,
+  // and notice a core update (also as soon as the tab is shown again).
+  const checkMe = async () => {
     try {
       const t = localStorage.getItem(TOKEN_KEY);
       const r = await fetch('/api/auth/me', { headers: t ? { Authorization: 'Bearer ' + t } : {} });
       if (r.status === 200) {
         const u = await r.json();
+        if (coreUpdated(u.core_version)) return;
         if (JSON.stringify(u.caps) !== JSON.stringify(window.USER.caps) ||
             u.role !== window.USER.role) {
           window.USER = { username: window.USER.username, role: u.role, caps: u.caps };
@@ -4301,7 +4325,9 @@ function skeletons(sel, n){
         }
       }
     } catch(e) {}
-  }, 30000);
+  };
+  setInterval(checkMe, 30000);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) checkMe(); });
 
   skeletons('#hosts', 3); skeletons('#services', 4);
   $('#ct-body').innerHTML = '<tr><td colspan="7"><div class="empty">Loading containers…</div></td></tr>';

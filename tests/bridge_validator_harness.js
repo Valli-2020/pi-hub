@@ -196,8 +196,12 @@ function callTest(name, m, expectFetch, expectStatus){
   if (rec.toasts.length !== 1) fail('toast rate limit (1 per 5 s)', rec.toasts.length);
   fresh(); send({ op: 'toast', msg: '<b>x</b>'.repeat(100) });
   if (rec.toasts[0] && rec.toasts[0][0].length > 220) fail('toast text capped', rec.toasts[0][0].length);
-  fresh(); send({ op: 'bogus' }); send('x'); send(null);
+  fresh(); send({ op: 5 }); send('x'); send(null);
   if (inst.iframe) fail('three violations kill the frame', 'still mounted');
+  fresh(); for (let i = 1; i <= 5; i++) send({ op: 'future-op', id: i });
+  if (!inst.iframe) fail('an unknown op from a newer frame does not stop it', 'killed');
+  if (rec.posts.filter(p => p.op === 'result' && p.ok === false && p.status === 501).length !== 5)
+    fail('an unknown op is answered with 501', JSON.stringify(rec.posts));
   fresh(); send({ op: 'resize', h: 1e9 }); if (inst.h > 1200) fail('resize clamped for widgets', inst.h);
   fresh(); send({ op: 'resize', h: -5 }); if (inst.h < 40) fail('resize lower bound', inst.h);
   fresh(); send({ op: 'resize', h: 'x' }); send({ op: 'resize', h: NaN }); send({ op: 'resize', h: Infinity });

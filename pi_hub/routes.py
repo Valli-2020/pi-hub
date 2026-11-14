@@ -15,6 +15,7 @@ from copy import deepcopy as _deepcopy
 from typing import Any, Dict, List, Tuple
 from urllib.parse import unquote as _unquote
 
+from pi_hub import __version__ as _core_version
 from pi_hub import auth
 from pi_hub import config
 from pi_hub import dockge
@@ -640,6 +641,7 @@ def handle_get(path: str, params: Params, session: dict | None = None) -> Respon
                 "username": session["user"],
                 "role": (rec or session).get("role", "viewer"),
                 "caps": (rec or {}).get("caps", {}),
+                "core_version": _core_version,
             }, 200
         return {"error": "Unauthorized"}, 401
 
